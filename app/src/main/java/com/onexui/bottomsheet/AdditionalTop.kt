@@ -1,12 +1,8 @@
 package com.onexui.bottomsheet
 
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.IntrinsicMeasurable
 import androidx.compose.ui.layout.IntrinsicMeasureScope
 import androidx.compose.ui.layout.Layout
@@ -23,10 +19,11 @@ internal enum class AdditionalTopState { Expanded, Collapsed }
 
 // Стек «Additional Top + основная часть» со стики-перекрытием (§1, §E):
 // Expanded — карточка раскрыта, её нижние 32dp утоплены под основную часть (overlap); контент виден.
-// Collapsed — видна полоска 20dp (peek), контент карточки в Alpha 0.
-// Основная часть (surface) рисуется ПОВЕРХ карточки (кладётся позже) → перекрытие корректно по z.
-// Высота карточки в contentHeight входит видимой частью (peek / natural-overlap); смену высоты листа
-// плавно доигрывает onContentRemeasured, а контент карточки — плавным fade alpha.
+// Collapsed — видна полоска 20dp (peek): её ФОН остаётся видимым, а КОНТЕНТ карточки уходит в Alpha 0.
+// Компонент отвечает только за перекрытие/высоту peek; фейд контента при неизменном фоне — задача слота
+// (карточка сама разделяет фон и контент, см. demo AdditionalTopCard) — иначе фейд всего слота сделал бы
+// полоску прозрачной (зазор вместо полоски). Основная часть (surface) рисуется ПОВЕРХ карточки (кладётся
+// позже) → перекрытие корректно по z. Высота карточки входит в contentHeight видимой частью (peek/natural−overlap).
 @Composable
 internal fun AdditionalTopStack(
     additionalTopState: AdditionalTopState,
@@ -36,17 +33,12 @@ internal fun AdditionalTopStack(
     val density = LocalDensity.current
     val overlapPx = with(density) { XBottomSheetDefaults.AdditionalTopOverlap.roundToPx() }
     val peekPx = with(density) { XBottomSheetDefaults.AdditionalTopPeek.roundToPx() }
-    val alpha by animateFloatAsState(
-        targetValue = if (additionalTopState == AdditionalTopState.Expanded) 1f else 0f,
-        label = "additionalTopAlpha",
-    )
     val measurePolicy = remember(additionalTopState, overlapPx, peekPx) {
         AdditionalTopMeasurePolicy(additionalTopState, overlapPx, peekPx)
     }
     Layout(
         content = {
-            // Читаем alpha в graphicsLayer-лямбде (deferred) — fade без рекомпозиции.
-            Box(modifier = Modifier.graphicsLayer { this.alpha = alpha }) { card() }
+            Box { card() }
             Box { surface() }
         },
         measurePolicy = measurePolicy,

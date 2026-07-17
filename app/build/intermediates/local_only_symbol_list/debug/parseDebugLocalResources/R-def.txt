@@ -1,7 +1,0 @@
-R_DEF: Internal format may change without notice
-local
-id compose_container
-id fragment_container
-layout activity_main
-string app_name
-style Theme.BsZorderLab

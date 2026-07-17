@@ -32,6 +32,8 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
@@ -58,15 +60,16 @@ internal fun XBottomSheet(
     dismissOnOutsideTap: Boolean = true,
     dismissOnSwipeDown: Boolean = true,
     additionalTop: (@Composable () -> Unit)? = null,
-    additionalTopState: AdditionalTopState = AdditionalTopState.Expanded,
     top: (@Composable () -> Unit)? = null,
     bottom: (@Composable () -> Unit)? = null,
     middle: @Composable ColumnScope.() -> Unit,
 ) {
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
-    // Скролл Middle поднят сюда: измеритель читает его maxValue как триггер re-measure при росте контента
-    // (внутри verticalScroll рост не меняет измеренный размер тела → без этого intrinsic не переспрашивается).
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    // Скролл Middle: единственный скролл листа. Поднят сюда, чтобы жить на уровне листа (переживает
+    // рекомпозиции тела), передаётся в verticalScroll внутри SheetBody.
     val middleScrollState = rememberScrollState()
     val currentOnDismiss by rememberUpdatedState(onDismissRequest)
     // Размеры экрана — из LocalWindowInfo.containerSize (px), без BoxWithConstraints. При повороте
@@ -84,11 +87,13 @@ internal fun XBottomSheet(
     val scrimFadeDistancePx = with(density) { ScrimFadeDistance.toPx() }
     val isWide = screenWidthDp >= XBottomSheetDefaults.WideScreenThreshold
     val widthModifier = if (isWide) Modifier.width(XBottomSheetDefaults.MaxWidth) else Modifier.fillMaxWidth()
-    // Взаимодействие с высотой отключено, если хендл скрыт или идёт Loading (§5).
-    val interactionsEnabled = dragHandle != null && !state.isLoading
     // Клавиатура: единый источник состояния IME (xbet KeyboardLiftState), общий для авто-FullScreen и
     // модификаторов подъёма/сжатия. Alva-копию KeyboardLiftState не трогаем — здесь xbet-пакет.
     val keyboardState = rememberKeyboardLiftState()
+    val imeVisible = keyboardState.value.isKeyboardVisible
+    // Взаимодействие с высотой отключено: хендл скрыт, Loading, ИЛИ открыта клавиатура (уточнение юзера §6 —
+    // при видимой IME жесты высоты выключены; закрытие только тапом снаружи/кнопкой).
+    val interactionsEnabled = dragHandle != null && !state.isLoading && !imeVisible
     val isFullScreen = state.currentValue == SheetValue.ExpandedFullScreen
 
     // Рост/уменьшение контента (подгрузка списка): высота листа следует за контентом. Измеритель (Layout)
@@ -106,6 +111,19 @@ internal fun XBottomSheet(
     LaunchedEffect(state, screenHeightPx, statusBarPx) { state.snapToCurrentAnchor() }
     // Показ IME → авто-переход в ExpandedFullScreen при нехватке места (§6).
     SheetKeyboardAutoFullScreenEffect(state = state, keyboardState = keyboardState)
+    // Закрытие БШ при открытой клавиатуре (§6, усиление юзера): как только лист уходит в Hidden, ПРИНУДИТЕЛЬНО
+    // роняем клавиатуру — иначе keyboard-lift оффсет (withAdjustmentForKeyboard) продолжал бы поднимать
+    // контейнер, и лист «улетел» бы вверх, отцепившись от нижней кромки. Дроп синхронно с началом анимации
+    // закрытия → лифт уходит к 0 вместе с высотой, лист остаётся прижат к низу.
+    LaunchedEffect(state) {
+        snapshotFlow { state.currentValue == SheetValue.Hidden }
+            .collect { hidden ->
+                if (hidden) {
+                    keyboardController?.hide()
+                    focusManager.clearFocus(force = true)
+                }
+            }
+    }
 
     val nestedScrollConnection = remember(state, scope, interactionsEnabled, dismissOnSwipeDown) {
         SheetNestedScrollConnection(
@@ -141,7 +159,6 @@ internal fun XBottomSheet(
             isFullScreen = isFullScreen,
             middleScrollState = middleScrollState,
             additionalTop = additionalTop,
-            additionalTopState = additionalTopState,
             top = top,
             bottom = bottom,
             middle = middle,
@@ -200,7 +217,6 @@ private fun SheetContainer(
     isFullScreen: Boolean,
     middleScrollState: ScrollState,
     additionalTop: (@Composable () -> Unit)?,
-    additionalTopState: AdditionalTopState,
     top: (@Composable () -> Unit)?,
     bottom: (@Composable () -> Unit)?,
     middle: @Composable ColumnScope.() -> Unit,
@@ -222,7 +238,6 @@ private fun SheetContainer(
                 isFullScreen = isFullScreen,
                 middleScrollState = middleScrollState,
                 additionalTop = additionalTop,
-                additionalTopState = additionalTopState,
                 top = top,
                 bottom = bottom,
                 middle = middle,
@@ -245,9 +260,9 @@ private fun SheetContainer(
         // Плейсмент: тело кладём высотой offset (текущая высота листа), но не выше потолка. Reflow top/middle/
         // bottom корректный (sticky-низ у нижнего края offset), клип не нужен.
         val placeHeight = state.offset.value.roundToInt().coerceIn(0, ceilingPx)
-        // Натуральная высота контента — intrinsic (unclamped): точное M+S синхронно (в т.ч. на Hidden). Рост
-        // контента внутри verticalScroll этот Layout НЕ переизмеряет (размер тела фиксирован offset'ом),
-        // поэтому рост ловится отдельно — snapshotFlow(maxValue) в XBottomSheet (onMiddleScrollRangeChanged).
+        // Натуральная высота контента — intrinsic (unclamped): точное M+S синхронно (в т.ч. на Hidden). При
+        // росте контента relayout поднимается от списка → Layout переизмеряется → intrinsic обновляется →
+        // contentHeightPx меняется → onContentRemeasured тянет высоту.
         val naturalHeight = body.maxIntrinsicHeight(width)
         val placeable = body.measure(Constraints.fixed(width = width, height = placeHeight))
         layout(width = width, height = placeHeight) {
@@ -275,7 +290,6 @@ private fun SheetBody(
     isFullScreen: Boolean,
     middleScrollState: ScrollState,
     additionalTop: (@Composable () -> Unit)?,
-    additionalTopState: AdditionalTopState,
     top: (@Composable () -> Unit)?,
     bottom: (@Composable () -> Unit)?,
     middle: @Composable ColumnScope.() -> Unit,
@@ -330,7 +344,7 @@ private fun SheetBody(
     ) {
         if (additionalTop != null) {
             AdditionalTopStack(
-                additionalTopState = additionalTopState,
+                additionalTopState = state.additionalTopState,
                 card = additionalTop,
                 surface = sheetSurface,
             )

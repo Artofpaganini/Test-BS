@@ -10,6 +10,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.math.abs
 
 // Стейт-машина высоты листа. Compose-state (mutableStateOf), НЕ StateFlow — правило _state.update{}
 // здесь не применяется. Состояние ВЫЧИСЛЯЕТСЯ по метрикам и фактам, публичное API управляет фактами.
@@ -25,6 +27,9 @@ internal class XBottomSheetState internal constructor(
     var isLoading by mutableStateOf(initialLoading)
         internal set
 
+    // Additional Top живёт на стейте (§7): переключается внешними факторами (кнопка/логика экрана), не жестами.
+    var additionalTopState by mutableStateOf(AdditionalTopState.Expanded)
+
     internal var metrics by mutableStateOf<SheetMetrics?>(null)
         private set
 
@@ -34,6 +39,10 @@ internal class XBottomSheetState internal constructor(
 
     // Флаг активного драга: nested-scroll/жесты выставляют его, settle снимает.
     internal var isDragging by mutableStateOf(false)
+
+    // Аккумулированный СЫРОЙ overshoot над якорем во время драга (px). Сопротивление считается от суммы:
+    // offset = anchor + resistedOvershoot(rawOvershootPx). Сброс на settle — иначе resist(resist(prev)+delta).
+    private var rawOvershootPx = 0f
 
     // Стейт, ЗАПОМНЕННЫЙ перед авто-промоушеном в FullScreen из-за клавиатуры (§6, уточнение юзера): при
     // скрытии IME откатываемся к нему. Ручное взаимодействие с высотой (expand/settle) сбрасывает флаг —
@@ -62,10 +71,17 @@ internal class XBottomSheetState internal constructor(
         animateTo(SheetValue.Hidden)
     }
 
-    // Данные загрузились: снять Loading и анимировать высоту к целевому стейту.
+    // Данные загрузились: снять Loading и анимировать высоту к целевому стейту. Во время Loading middle не
+    // композируется (там Loader), поэтому contentHeightPx = высота Loader'а. Нужно ДОЖДАТЬСЯ ре-замера
+    // реального контента (метрики станут новым инстансом), и лишь потом считать openTarget — иначе цель
+    // высчитается по устаревшей высоте Loader'а. Если высота совпала (нового инстанса не будет) — таймаут
+    // и текущие метрики уже корректны.
     suspend fun contentReady() {
+        val loaderMetrics = metrics
         isLoading = false
-        val measured = awaitMetrics()
+        val measured = withTimeoutOrNull(REMEASURE_TIMEOUT_MS) {
+            snapshotFlow { metrics }.filterNotNull().first { remeasured -> remeasured !== loaderMetrics }
+        } ?: awaitMetrics()
         animateTo(measured.openTarget(skipCollapsed))
     }
 
@@ -74,6 +90,11 @@ internal class XBottomSheetState internal constructor(
     internal suspend fun onContentRemeasured() {
         val measured = metrics ?: return
         if (!isVisible) return
+        // Во время Loading высота фиксирована (Loader 192dp), а показ/готовность контента ведут show()/
+        // contentReady(). Если бы onContentRemeasured тут дёргал offset.animateTo (при замере Loader'а или
+        // при появлении реального контента до contentReady's animateTo), он ОТМЕНИЛ бы show()/contentReady
+        // CancellationException'ом (мьютекс Animatable) → лист завис бы в Loading. Поэтому в Loading — no-op.
+        if (currentValue == SheetValue.Loading) return
         if (skipCollapsed && currentValue == SheetValue.Content &&
             measured.contentHeightPx > measured.maxHeightPx
         ) {
@@ -110,10 +131,13 @@ internal class XBottomSheetState internal constructor(
         if (currentValue == SheetValue.ExpandedFullScreen) animateTo(target)
     }
 
-    // Смена размеров экрана (поворот/resize): высота снапится к якорю текущего стейта, без анимации.
+    // Смена размеров экрана (поворот/resize): высота снапится к якорю текущего стейта, без анимации. ВАЖНО:
+    // не снапим, пока идёт анимация (offset.isRunning) — иначе транзиент containerSize на старте (screenHeightPx
+    // ещё «устаканивается») снапнул бы offset и ОТМЕНИЛ бы show()/contentReady/settle (мьютекс Animatable),
+    // сорвав их последовательность. Снап только когда лист покоится (реальный поворот в устоявшемся стейте).
     internal suspend fun snapToCurrentAnchor() {
         val measured = metrics ?: return
-        if (!isVisible) return
+        if (!isVisible || offset.isRunning) return
         offset.snapTo(measured.anchorPx(currentValue, skipCollapsed).toFloat())
     }
 
@@ -133,73 +157,77 @@ internal class XBottomSheetState internal constructor(
     }
 
     // Живой драг за хендл/контент: двигаем высоту, с сопротивлением на overshoot в Content/ExpandedContent.
+    // Overshoot аккумулируется СЫРЫМ (rawOvershootPx), сопротивление применяется к сумме — не итеративно.
     internal suspend fun dragBy(deltaHeightPx: Float) {
         val measured = metrics ?: return
-        val raw = offset.value + deltaHeightPx
-        offset.snapTo(resolveDragTarget(measured, raw))
-    }
-
-    private fun resolveDragTarget(measured: SheetMetrics, rawHeightPx: Float): Float {
         val ceiling = measured.maxHeightPx.toFloat()
         val anchor = measured.anchorPx(currentValue, skipCollapsed).toFloat()
         val resistanceState = currentValue == SheetValue.Content || currentValue == SheetValue.ExpandedContent
-        return when {
-            resistanceState && rawHeightPx > anchor ->
-                (anchor + resistedOvershoot(rawHeightPx - anchor, RESISTANCE_MAX_PX)).coerceAtMost(ceiling)
-            else -> rawHeightPx.coerceIn(0f, ceiling)
+        val inOvershoot = resistanceState &&
+            (rawOvershootPx > 0f || (offset.value >= anchor - 0.5f && deltaHeightPx > 0f))
+        if (inOvershoot) {
+            rawOvershootPx = (rawOvershootPx + deltaHeightPx).coerceAtLeast(0f)
+            val resisted = resistedOvershoot(rawOvershootPx, RESISTANCE_MAX_PX)
+            offset.snapTo((anchor + resisted).coerceAtMost(ceiling))
+        } else {
+            rawOvershootPx = 0f
+            offset.snapTo((offset.value + deltaHeightPx).coerceIn(0f, ceiling))
         }
     }
 
-    // Settle после отпускания: по скорости и ближайшему якорю (§5). Возвращает управление,
-    // когда анимация к якорю завершена или запрошено закрытие.
+    // Settle после отпускания (§5): по скорости и ближайшему якорю. Собираем отсортированные якоря доступных
+    // стейтов; при скорости — ближайший якорь ПО НАПРАВЛЕНИЮ, при малой скорости — ближайший по расстоянию
+    // (граница между соседями = midpoint). Hidden в наборе = свайп-закрытие (если dismissOnSwipeDown).
     internal suspend fun settle(
         velocity: Float,
         dismissOnSwipeDown: Boolean,
         onDismissRequest: () -> Unit,
     ) {
         isDragging = false
+        rawOvershootPx = 0f
         imePromotedFrom = null // ручное взаимодействие с высотой отменяет авто-откат при скрытии IME
         val measured = metrics ?: return
-        when {
-            velocity < -FLING_VELOCITY_THRESHOLD -> settleUp(measured)
-            velocity > FLING_VELOCITY_THRESHOLD -> settleDown(dismissOnSwipeDown, onDismissRequest)
-            else -> settleByPosition(measured, dismissOnSwipeDown, onDismissRequest)
+        val candidates = settleCandidates(measured, dismissOnSwipeDown)
+        if (candidates.isEmpty()) {
+            animateTo(currentValue)
+            return
         }
-    }
-
-    private suspend fun settleUp(measured: SheetMetrics) {
-        if (currentValue == SheetValue.Collapsed) animateTo(measured.expandTarget()) else animateTo(currentValue)
-    }
-
-    private suspend fun settleDown(dismissOnSwipeDown: Boolean, onDismissRequest: () -> Unit) {
-        val step = stepDownTarget()
-        when {
-            step != null -> animateTo(step)
-            dismissOnSwipeDown -> onDismissRequest()
-            else -> animateTo(currentValue)
+        val current = offset.value
+        val chosen = when {
+            velocity < -FLING_VELOCITY_THRESHOLD ->
+                candidates.firstOrNull { candidate -> candidate.second > current + ANCHOR_EPS } ?: candidates.last()
+            velocity > FLING_VELOCITY_THRESHOLD ->
+                candidates.lastOrNull { candidate -> candidate.second < current - ANCHOR_EPS } ?: candidates.first()
+            else ->
+                candidates.minByOrNull { candidate -> abs(candidate.second - current) } ?: candidates.first()
         }
+        if (chosen.first == SheetValue.Hidden) onDismissRequest() else animateTo(chosen.first)
     }
 
-    private suspend fun settleByPosition(
+    // Отсортированные по высоте якоря доступных стейтов для settle. Rest-стейты зависят от skipCollapsed и
+    // высоты контента; Hidden добавляется только если разрешено закрытие свайпом.
+    private fun settleCandidates(
         measured: SheetMetrics,
         dismissOnSwipeDown: Boolean,
-        onDismissRequest: () -> Unit,
-    ) {
-        val anchor = measured.anchorPx(currentValue, skipCollapsed).toFloat()
+    ): List<Pair<SheetValue, Int>> {
+        val list = mutableListOf<Pair<SheetValue, Int>>()
         when {
-            offset.value < anchor * SETTLE_DISMISS_FRACTION -> settleDown(dismissOnSwipeDown, onDismissRequest)
-            currentValue == SheetValue.Collapsed && offset.value > measured.collapsedPx * SETTLE_EXPAND_FRACTION ->
-                animateTo(measured.expandTarget())
-            else -> animateTo(currentValue)
+            skipCollapsed -> {
+                list.add(SheetValue.Content to measured.anchorPx(SheetValue.Content, skipCollapsed = true))
+                if (measured.contentHeightPx > measured.maxHeightPx) {
+                    list.add(SheetValue.ExpandedFullScreen to measured.maxHeightPx)
+                }
+            }
+            measured.contentHeightPx <= measured.collapsedPx ->
+                list.add(SheetValue.Content to measured.anchorPx(SheetValue.Content, skipCollapsed = false))
+            else -> {
+                list.add(SheetValue.Collapsed to measured.collapsedPx)
+                val expanded = measured.expandTarget()
+                list.add(expanded to measured.anchorPx(expanded, skipCollapsed = false))
+            }
         }
-    }
-
-    // Один шаг вниз по стейт-машине: Expanded* → Collapsed (или Content при skipCollapsed);
-    // Content/Collapsed → null (означает закрытие).
-    private fun stepDownTarget(): SheetValue? = when (currentValue) {
-        SheetValue.ExpandedContent, SheetValue.ExpandedFullScreen ->
-            if (skipCollapsed) SheetValue.Content else SheetValue.Collapsed
-        else -> null
+        if (dismissOnSwipeDown) list.add(SheetValue.Hidden to 0)
+        return list.distinctBy { candidate -> candidate.second }.sortedBy { candidate -> candidate.second }
     }
 
     private suspend fun animateTo(target: SheetValue) {
@@ -210,9 +238,9 @@ internal class XBottomSheetState internal constructor(
 
     private companion object {
         const val FLING_VELOCITY_THRESHOLD = 400f
-        const val SETTLE_DISMISS_FRACTION = 0.5f
-        const val SETTLE_EXPAND_FRACTION = 1.15f
         const val RESISTANCE_MAX_PX = 240f
+        const val ANCHOR_EPS = 1f
+        const val REMEASURE_TIMEOUT_MS = 500L
     }
 }
 

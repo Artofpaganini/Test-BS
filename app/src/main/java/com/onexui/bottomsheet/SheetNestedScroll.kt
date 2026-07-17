@@ -23,9 +23,11 @@ internal class SheetNestedScrollConnection(
         if (!interactionsEnabled || source != NestedScrollSource.UserInput) return Offset.Zero
         val delta = available.y
         val metrics = state.metrics ?: return Offset.Zero
-        // Вверх (delta<0) в Collapsed при наличии места роста — сначала растим лист, поглощаем дельту.
+        // Вверх (delta<0) в Collapsed растим лист ДО якоря expandTarget (ExpandedContent/FullScreen), не до
+        // потолка — иначе в b1 (контент ≤ экрана) жест утаскивал бы лист мимо ExpandedContent к Status Bar.
+        val expandAnchor = metrics.anchorPx(metrics.expandTarget(), state.skipCollapsed)
         return if (delta < 0f && state.currentValue == SheetValue.Collapsed &&
-            state.offset.value < metrics.maxHeightPx
+            state.offset.value < expandAnchor
         ) {
             state.isDragging = true
             scope.launch { state.dragBy(-delta) }

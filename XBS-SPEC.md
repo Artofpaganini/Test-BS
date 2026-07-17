@@ -189,6 +189,18 @@ IME скрывается при: закрытии БШ; FullScreen→Collapsed; 
 и сбрасывает флаг. РУЧНОЕ взаимодействие с высотой (`expand()`/`settle()`) сбрасывает `imePromotedFrom` → ручной
 разворот НЕ откатывается.
 
+**Жесты высоты при открытой клавиатуре (уточнение от юзера).** При видимой IME взаимодействие с высотой ЖЕСТАМИ
+отключено полностью: `interactionsEnabled = dragHandle != null && !isLoading && !imeVisible`. Nested-scroll двигает
+ТОЛЬКО список; `dragBy`/`settle` не вызываются. Закрытие остаётся доступно тапом снаружи (`dismissOnOutsideTap`) и
+кнопкой/`hide()`. Скрытие IME (back/IME-кнопка) → жесты снова активны + откат авто-FullScreen (см. выше).
+
+**Принудительный дроп IME при закрытии (уточнение от юзера).** Закрытие листа при ОТКРЫТОЙ клавиатуре ПРИНУДИТЕЛЬНО
+роняет её (`keyboardController.hide()` + `focusManager.clearFocus()`) синхронно с началом анимации закрытия — иначе
+keyboard-lift оффсет (`withAdjustmentForKeyboard`) продолжал бы поднимать контейнер, и лист «улетел» бы вверх,
+отцепившись от нижней кромки. Реализация: `snapshotFlow{ currentValue == Hidden }` → дроп IME (покрывает все пути
+закрытия: тап снаружи, кнопка, `hide()`; свайп-закрытие при IME недоступен — жесты отключены). Лист во время
+закрытия остаётся прижат к низу.
+
 ## 7. Корневой composable (референс)
 
 ```
@@ -381,6 +393,11 @@ Demo — `com/onexui/demo/`:
 
 1. **Измерение контента** — (ПЕРЕСМОТРЕНО) кастомный `Layout` с одним ребёнком: `maxIntrinsicHeight` (unclamped) для
    натуральной высоты + `measure(fixed(offset))` для плейсмента, одна композиция. Без SubcomposeLayout. Решение фазы B.
+   Рост контента (кейс k): relayout поднимается от списка → Layout переизмеряется → intrinsic обновляется →
+   `contentHeightPx` меняется → `onContentRemeasured` тянет высоту / авто-FullScreen. ВАЖНО: коллектор
+   `snapshotFlow{contentHeightPx}` запускает `onContentRemeasured` в ДОЧЕРНЕМ `launch` — иначе `offset.animateTo`,
+   прерванный конкурирующей анимацией (show/settle) CancellationException'ом, убил бы сам коллектор (после первого
+   прерывания рост перестал бы отслеживаться). `launch` изолирует отмену анимации от коллектора.
 2. **Bootstrap первого открытия** — offset=0 (Hidden) до измерения; `contentHeightPx` считается синхронно из intrinsic
    на первом же layout-пассе (тело композируется до show()), затем `show()` анимирует к цели → «попа» нет.
 3. **Поворот/resize** — `SheetMetrics` зависит от screenHeightPx/statusBarPx/contentHeightPx; при повороте
@@ -398,3 +415,18 @@ Demo — `com/onexui/demo/`:
    кастомный модификатор в `XBottomSheetDefaults`.
 7. **Loader / скелетон** — Lottie запрещён (§9), скелетон компонент не поддерживает; Loader = простой прогресс 192dp.
 8. **Изоляция demo** — отдельная exported Activity, полное имя в манифесте, ноль правок z-order-лабы.
+9. **contentReady() и Loading-метрики** — во время Loading middle = Loader, поэтому `contentHeightPx` = высота
+   Loader'а. `contentReady()` снимает `isLoading`, ДОЖИДАЕТСЯ ре-замера реального контента (`snapshotFlow{metrics}`
+   до нового инстанса, с таймаутом-фолбэком) и лишь потом считает `openTarget` — иначе цель по устаревшей высоте.
+
+### Документированные отступления реализации (ПЕРЕСМОТРЕНО, обоснование)
+
+- **ShadowSoft: elevation 16dp вместо `0 -4 32 rgba(0,0,0,.1)`.** Точная «мягкая» тень с blur 32dp требует
+  `RenderEffect.createBlurEffect` (API 31+), а `minSdk = 30` → на 30 blur недоступен. Поэтому `Modifier.shadow`
+  (elevation 16dp, `clip=false`, ambient/spot = `Black .10`) как аппроксимация. Число-к-числу (гаусс-blur 32/offset −4)
+  можно включить при `minSdk ≥ 31` через кастомный `graphicsLayer{ renderEffect = BlurEffect(...) }`.
+- **Loading-якорь = 192dp + navBarPx.** Edge-to-edge адаптация (§баг nav bar): контент внутри Surface отступает на
+  nav bar, поэтому чтобы ВИДИМАЯ зона Loader'а осталась 192dp, якорь = 192dp + navBarPx.
+- **internal-видимость публичного API.** В лабе весь API компонента `internal` (single-module, demo — тот же
+  модуль). При переносе в 1XUI Core снять `internal` с контракта (`XBottomSheet`, `rememberXBottomSheetState`,
+  `XBottomSheetState`, `DragHandleStyle`, `AdditionalTopState`, пресеты) — сделать `public` api-модуля uikit.

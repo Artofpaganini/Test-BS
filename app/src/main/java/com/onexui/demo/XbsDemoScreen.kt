@@ -1,5 +1,6 @@
 package com.onexui.demo
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -28,6 +29,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.onexui.bottomsheet.AdditionalTopState
@@ -189,7 +191,8 @@ private fun CaseHugeList(onClose: () -> Unit) {
     }
 }
 
-// (c) skipCollapsed = true: контент без лимита 60% (лимит — Status Bar); список выше экрана → FullScreen.
+// (c) skipCollapsed = true: контент БЕЗ лимита 60% (лимит — Status Bar). ~10 элементов: 60% < контент ≤ экрана →
+// стейт Content по высоте контента (без skip был бы Collapsed 60%) — видна разница ветки skip.
 @Composable
 private fun CaseSkipCollapsed(onClose: () -> Unit) {
     val scope = rememberCoroutineScope()
@@ -201,7 +204,7 @@ private fun CaseSkipCollapsed(onClose: () -> Unit) {
         onDismissRequest = dismiss,
         top = { PresetTitle("Популярное (skipCollapsed)") },
     ) {
-        SPORTS.take(14).forEachIndexed { index, sport ->
+        SPORTS.take(10).forEachIndexed { index, sport ->
             PresetMenuCell(
                 title = sport,
                 onClick = dismiss,
@@ -273,31 +276,28 @@ private fun CaseNoHandle(onClose: () -> Unit) {
     }
 }
 
-// (g) Additional Top «Добавить в купон / Отслеживать»: слот с Expanded/Collapsed, переключается кнопкой в листе.
+// (g) Additional Top «Добавить в купон / Отслеживать»: слот с Expanded/Collapsed. Состояние живёт на
+// state.additionalTopState (§7), переключается кнопкой в листе (внешний фактор).
 @Composable
 private fun CaseAdditionalTop(onClose: () -> Unit) {
     val scope = rememberCoroutineScope()
     val state = rememberXBottomSheetState()
-    var additionalTopState by remember { mutableStateOf(AdditionalTopState.Expanded) }
     val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) { state.show() }
+    val collapsed = state.additionalTopState == AdditionalTopState.Collapsed
     XBottomSheet(
         state = state,
         onDismissRequest = dismiss,
-        additionalTop = { AdditionalTopCard() },
-        additionalTopState = additionalTopState,
+        additionalTop = { AdditionalTopCard(collapsed = collapsed) },
         top = { PresetTitle("Событие") },
         bottom = {
-            val toggleLabel = when (additionalTopState) {
-                AdditionalTopState.Expanded -> "Свернуть Additional Top"
-                AdditionalTopState.Collapsed -> "Развернуть Additional Top"
-            }
             Preset1Button(
-                text = toggleLabel,
+                text = if (collapsed) "Развернуть Additional Top" else "Свернуть Additional Top",
                 onClick = {
-                    additionalTopState = when (additionalTopState) {
-                        AdditionalTopState.Expanded -> AdditionalTopState.Collapsed
-                        AdditionalTopState.Collapsed -> AdditionalTopState.Expanded
+                    state.additionalTopState = if (collapsed) {
+                        AdditionalTopState.Expanded
+                    } else {
+                        AdditionalTopState.Collapsed
                     }
                 },
             )
@@ -383,13 +383,20 @@ private fun CaseStaticGrow(onClose: () -> Unit) {
     }
 }
 
-// Карточка Additional Top: собственный фон (не красим составные части листа — это внешний контент слота).
+// Карточка Additional Top: ФОН слота (не красим составные части листа — это внешний контент). Фон рисуется
+// всегда (в Collapsed остаётся видимой полоской peek 20dp), а КОНТЕНТ (тексты) уходит в Alpha 0 — раздельно
+// фон/контент, чтобы полоска не была прозрачной. graphicsLayer с alpha — на контент внутри фона.
 @Composable
-private fun AdditionalTopCard() {
+private fun AdditionalTopCard(collapsed: Boolean) {
+    val contentAlpha by animateFloatAsState(
+        targetValue = if (collapsed) 0f else 1f,
+        label = "additionalTopContentAlpha",
+    )
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.primaryContainer)
+            .graphicsLayer { alpha = contentAlpha }
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
