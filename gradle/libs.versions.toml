@@ -1,0 +1,55 @@
+[versions]
+
+minSdk = "30"
+targetSdk = "37"
+compileSdk = "37"
+versionCode = "1"
+versionName = "1.0.0"
+
+version-kotlin = "2.4.0"
+version-android-application = "9.2.1"
+
+# Compose Multiplatform (JetBrains) — те же координаты, что в Alva
+version-compose = "1.11.1"
+version-compose-material3 = "1.10.0-alpha05"
+
+# Navigation 3 (JetBrains) — 1.1.1, ровно как в Alva: порт AlvaBottomSheet написан под этот API
+version-navigation = "1.1.1"
+version-navigation-lifecycle = "2.10.0"
+version-navigationevent = "1.1.0"
+version-androidx-lifecycle = "2.10.0"
+
+# Google androidx / View-мир
+version-androidx-activity-compose = "1.13.0"
+version-android-core-ktx = "1.19.0"
+version-androidx-appcompat = "1.7.1"
+version-androidx-fragment = "1.8.9"
+version-google-material = "1.14.0"
+
+[libraries]
+# Compose Multiplatform (JetBrains) — android-вариант резолвится в androidx.compose.*
+compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "version-compose" }
+compose-runtime-saveable = { module = "org.jetbrains.compose.runtime:runtime-saveable", version.ref = "version-compose" }
+compose-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "version-compose" }
+compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "version-compose" }
+compose-ui-util = { module = "org.jetbrains.compose.ui:ui-util", version.ref = "version-compose" }
+compose-animation = { module = "org.jetbrains.compose.animation:animation", version.ref = "version-compose" }
+compose-material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "version-compose-material3" }
+
+# Navigation 3 (JetBrains): navigation3-ui тянет navigation3-runtime + scene транзитивно
+jetbrains-navigation-ui = { module = "org.jetbrains.androidx.navigation3:navigation3-ui", version.ref = "version-navigation" }
+# lifecycle-viewmodel-navigation3 — для rememberViewModelStoreNavEntryDecorator в MultiBackStackNavigator
+jetbrains-navigation-viewmodel-lifecycle = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-navigation3", version.ref = "version-navigation-lifecycle" }
+jetbrains-navigationevent-compose = { module = "org.jetbrains.androidx.navigationevent:navigationevent-compose", version.ref = "version-navigationevent" }
+androidx-lifecycle-runtime = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "version-androidx-lifecycle" }
+
+# Google androidx
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "version-androidx-activity-compose" }
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "version-android-core-ktx" }
+androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "version-androidx-appcompat" }
+androidx-fragment-ktx = { module = "androidx.fragment:fragment-ktx", version.ref = "version-androidx-fragment" }
+material = { group = "com.google.android.material", name = "material", version.ref = "version-google-material" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "version-android-application" }
+compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "version-kotlin" }

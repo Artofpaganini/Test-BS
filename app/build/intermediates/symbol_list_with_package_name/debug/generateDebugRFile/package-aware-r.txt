@@ -1,0 +1,6 @@
+com.zorderlab
+id compose_container
+id fragment_container
+layout activity_main
+string app_name
+style Theme_BsZorderLab
