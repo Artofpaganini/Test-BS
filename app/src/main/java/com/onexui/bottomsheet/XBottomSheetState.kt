@@ -10,7 +10,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
-import kotlin.math.roundToInt
 
 // Стейт-машина высоты листа. Compose-state (mutableStateOf), НЕ StateFlow — правило _state.update{}
 // здесь не применяется. Состояние ВЫЧИСЛЯЕТСЯ по метрикам и фактам, публичное API управляет фактами.
@@ -75,27 +74,12 @@ internal class XBottomSheetState internal constructor(
     internal suspend fun onContentRemeasured() {
         val measured = metrics ?: return
         if (!isVisible) return
-        android.util.Log.d("XBS", "onContentRemeasured content=${measured.contentHeightPx} maxH=${measured.maxHeightPx} cur=$currentValue skip=$skipCollapsed")
         if (skipCollapsed && currentValue == SheetValue.Content &&
             measured.contentHeightPx > measured.maxHeightPx
         ) {
             animateTo(SheetValue.ExpandedFullScreen)
         } else {
             offset.animateTo(measured.anchorPx(currentValue, skipCollapsed).toFloat(), NativeSheetSpring)
-        }
-    }
-
-    // Рост/уменьшение контента Middle, пойманный по scrollState.maxValue (измеритель тело не переизмеряет).
-    // Натуральная высота = offset + overflow (== M+S при offset ≥ sticky). Обновляем contentHeightPx в метриках
-    // → snapshotFlow в XBottomSheet поднимает onContentRemeasured. Скролл списка maxValue не меняет (только
-    // при смене размера контента/viewport), поэтому спама во время скролла нет.
-    internal fun onMiddleScrollRangeChanged(scrollOverflowPx: Int) {
-        val measured = metrics ?: return
-        if (!isVisible) return
-        val estimated = offset.value.roundToInt() + scrollOverflowPx
-        android.util.Log.d("XBS", "onMiddleScrollRangeChanged overflow=$scrollOverflowPx offset=${offset.value.roundToInt()} estimated=$estimated old=${measured.contentHeightPx} maxH=${measured.maxHeightPx} cur=$currentValue")
-        if (estimated != measured.contentHeightPx) {
-            metrics = measured.copy(contentHeightPx = estimated)
         }
     }
 
