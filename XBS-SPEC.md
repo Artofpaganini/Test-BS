@@ -360,6 +360,7 @@ Demo — `com/onexui/demo/`:
 - [x] (f) `dragHandle=null`: хендл скрыт, взаимодействие с высотой отключено (нет свайпа/expand), закрытие — тап/`hide()`.
 - [x] (g) additionalTop «Добавить в купон/Отслеживать»: слот с Expanded/Collapsed, переключается кнопкой в кейсе.
 - [x] (i) IME: `PresetSearchField` в top + короткий список; фокус на поле → подъём (withAdjustmentForKeyboard) и авто-FullScreen + сжатие Middle (withKeyboardShrink); закрытие скрывает IME.
+- [x] (l) IME + гибкость подъёма: `bottomKeyboardBehavior = StayUnderKeyboard` — поиск (top) + список (middle) поднимаются над клавиатурой, а bottom-кнопка «Показать все» остаётся под клавиатурой (появляется при её скрытии). Дефолт `Lift` (кейс i) поднимает над клавиатурой ВЕСЬ контент.
 - [x] (j) Закрытия выключены: `dismissOnOutsideTap=false, dismissOnSwipeDown=false` — закрыть только кнопкой (`hide()`).
 - [x] (k) `DragHandleStyle.Static` + рост контента: кнопка в Middle «+10» → onContentRemeasured тянет высоту; при `skipCollapsed=true` рост выше экрана → авто-FullScreen.
 

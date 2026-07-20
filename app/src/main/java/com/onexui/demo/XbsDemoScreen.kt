@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.onexui.bottomsheet.AdditionalTopState
 import com.onexui.bottomsheet.DragHandleStyle
+import com.onexui.bottomsheet.KeyboardBottomBehavior
 import com.onexui.bottomsheet.XBottomSheet
 import com.onexui.bottomsheet.rememberXBottomSheetState
 import com.onexui.bottomsheet.presets.Preset1Button
@@ -63,6 +64,7 @@ private enum class DemoCase(val label: String) {
     F("(f) dragHandle = null"),
     G("(g) Additional Top — купон / отслеживать"),
     I("(i) IME — поиск: подъём / авто-FullScreen + shrink"),
+    L("(l) IME — поиск + список + bottom ПОД клавиатурой"),
     J("(j) Закрытия выключены — только кнопкой"),
     K("(k) Static handle + рост контента → авто-FullScreen"),
 }
@@ -124,6 +126,7 @@ private fun XbsCaseHost(case: DemoCase, onClose: () -> Unit) {
         DemoCase.F -> CaseNoHandle(onClose)
         DemoCase.G -> CaseAdditionalTop(onClose)
         DemoCase.I -> CaseImeSearch(onClose)
+        DemoCase.L -> CaseImeBottomUnderKeyboard(onClose)
         DemoCase.J -> CaseNoDismiss(onClose)
         DemoCase.K -> CaseStaticGrow(onClose)
     }
@@ -325,6 +328,38 @@ private fun CaseImeSearch(onClose: () -> Unit) {
             PresetTitle("Поиск + клавиатура")
             PresetSearchField(query = query, onQueryChange = { value -> query = value })
         },
+    ) {
+        filtered.forEachIndexed { index, sport ->
+            PresetMenuCell(
+                title = sport,
+                onClick = dismiss,
+                leadingColor = MarkerColors[index % MarkerColors.size],
+            )
+        }
+    }
+}
+
+// (l) Гибкость подъёма над клавиатурой: bottomKeyboardBehavior = StayUnderKeyboard. При фокусе на поиске лист
+// разворачивается в FullScreen, поиск (top) + список (middle) поднимаются над клавиатурой, а bottom-кнопка
+// остаётся прижатой к нижней кромке листа и уходит ПОД клавиатуру (появляется снова при её скрытии).
+// Для сравнения: кейс (i) с дефолтным Lift поднимает над клавиатурой ВЕСЬ контент, включая bottom.
+@Composable
+private fun CaseImeBottomUnderKeyboard(onClose: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val state = rememberXBottomSheetState()
+    var query by remember { mutableStateOf("") }
+    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
+    LaunchedEffect(Unit) { state.show() }
+    val filtered = SPORTS.take(8).filter { sport -> sport.contains(query, ignoreCase = true) }
+    XBottomSheet(
+        state = state,
+        onDismissRequest = dismiss,
+        bottomKeyboardBehavior = KeyboardBottomBehavior.StayUnderKeyboard,
+        top = {
+            PresetTitle("Вид спорта")
+            PresetSearchField(query = query, onQueryChange = { value -> query = value })
+        },
+        bottom = { Preset1Button(text = "Показать все", onClick = dismiss) },
     ) {
         filtered.forEachIndexed { index, sport ->
             PresetMenuCell(

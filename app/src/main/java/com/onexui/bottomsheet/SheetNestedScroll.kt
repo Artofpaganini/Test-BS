@@ -30,7 +30,7 @@ internal class SheetNestedScrollConnection(
             state.offset.value < expandAnchor
         ) {
             state.isDragging = true
-            scope.launch { state.dragBy(-delta) }
+            scope.launch { state.dragBy(-delta, dismissOnSwipeDown) }
             Offset(x = 0f, y = delta)
         } else {
             Offset.Zero
@@ -47,7 +47,7 @@ internal class SheetNestedScrollConnection(
         // Вниз (delta>0) — список уже в начале, остаток тянет лист вниз.
         return if (delta > 0f) {
             state.isDragging = true
-            scope.launch { state.dragBy(-delta) }
+            scope.launch { state.dragBy(-delta, dismissOnSwipeDown) }
             Offset(x = 0f, y = delta)
         } else {
             Offset.Zero

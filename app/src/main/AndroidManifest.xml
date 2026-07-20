@@ -7,8 +7,9 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.BsZorderLab">
 
+        <!-- Единственный LAUNCHER: UI-развилка между z-order-лабой (MainActivity) и XBS Demo. -->
         <activity
-            android:name=".MainActivity"
+            android:name=".LauncherActivity"
             android:exported="true"
             android:theme="@style/Theme.BsZorderLab">
             <intent-filter>
@@ -17,18 +18,19 @@
             </intent-filter>
         </activity>
 
-        <!-- Demo XBottomSheet: отдельная exported-Activity со своим LAUNCHER (вторая иконка «XBS Demo»),
-             adjustResize + edge-to-edge для IME. Полное имя вне namespace com.zorderlab. Блок additive. -->
+        <!-- Z-order-лаба (кнопки 1-8). exported оставлен: прямой запуск adb am start работает по-прежнему. -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.BsZorderLab" />
+
+        <!-- Demo XBottomSheet (кейсы a-k), adjustResize + edge-to-edge для IME. Полное имя вне namespace
+             com.zorderlab. exported оставлен: прямой запуск adb am start работает по-прежнему. -->
         <activity
             android:name="com.onexui.demo.XbsDemoActivity"
             android:exported="true"
             android:label="XBS Demo"
             android:theme="@style/Theme.BsZorderLab"
-            android:windowSoftInputMode="adjustResize">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+            android:windowSoftInputMode="adjustResize" />
     </application>
 </manifest>

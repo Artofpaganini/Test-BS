@@ -26,7 +26,7 @@ internal fun Modifier.sheetDrag(
     onDismissRequest: () -> Unit,
 ): Modifier {
     val draggableState = rememberDraggableState { delta ->
-        scope.launch { state.dragBy(-delta) }
+        scope.launch { state.dragBy(-delta, dismissOnSwipeDown) }
     }
     return this.draggable(
         state = draggableState,

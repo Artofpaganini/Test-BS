@@ -17,13 +17,14 @@ import kotlin.math.roundToInt
 internal fun SheetKeyboardAutoFullScreenEffect(
     state: XBottomSheetState,
     keyboardState: State<KeyboardLiftState>,
+    alwaysFullScreen: Boolean,
 ) {
-    LaunchedEffect(state, keyboardState) {
+    LaunchedEffect(state, keyboardState, alwaysFullScreen) {
         snapshotFlow { keyboardState.value }
             .distinctUntilChanged()
             .collect { lift ->
                 if (lift.isKeyboardVisible) {
-                    state.onImeShown(lift.keyboardHeight.roundToInt())
+                    state.onImeShown(lift.keyboardHeight.roundToInt(), alwaysFullScreen)
                 } else {
                     state.onImeHidden()
                 }

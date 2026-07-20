@@ -107,13 +107,15 @@ internal class XBottomSheetState internal constructor(
     // Показ клавиатуры (§6): в Content/Collapsed/ExpandedContent, если места на подъём не хватает —
     // авто-переход в ExpandedFullScreen; иначе стейт не меняется (лист поднимается модификатором
     // withAdjustmentForKeyboard). В FullScreen/Loading/Hidden стейт неизменен.
-    internal suspend fun onImeShown(imeHeightPx: Int) {
+    internal suspend fun onImeShown(imeHeightPx: Int, alwaysFullScreen: Boolean) {
         val measured = metrics ?: return
         if (!isVisible) return
         when (currentValue) {
             SheetValue.Content, SheetValue.Collapsed, SheetValue.ExpandedContent -> {
                 val liftedTop = measured.anchorPx(currentValue, skipCollapsed) + imeHeightPx
-                if (liftedTop > measured.maxHeightPx) {
+                // alwaysFullScreen (режим StayUnderKeyboard): разворачиваем на весь экран при любом показе IME —
+                // bottom должен доставать до нижней кромки экрана, под клавиатуру.
+                if (alwaysFullScreen || liftedTop > measured.maxHeightPx) {
                     imePromotedFrom = currentValue // запомним стейт до промоушена для отката при скрытии IME
                     animateTo(SheetValue.ExpandedFullScreen)
                 }
@@ -158,10 +160,14 @@ internal class XBottomSheetState internal constructor(
 
     // Живой драг за хендл/контент: двигаем высоту, с сопротивлением на overshoot в Content/ExpandedContent.
     // Overshoot аккумулируется СЫРЫМ (rawOvershootPx), сопротивление применяется к сумме — не итеративно.
-    internal suspend fun dragBy(deltaHeightPx: Float) {
+    internal suspend fun dragBy(deltaHeightPx: Float, dismissOnSwipeDown: Boolean) {
         val measured = metrics ?: return
         val ceiling = measured.maxHeightPx.toFloat()
         val anchor = measured.anchorPx(currentValue, skipCollapsed).toFloat()
+        // Нижняя граница драга. При запрещённом свайп-закрытии лист нельзя утянуть ниже самого нижнего
+        // разрешённого якоря — иначе палец уводит его к 0 (лист визуально «закрывается»), хотя единственная
+        // цель ниже — Hidden, а она отключена. При разрешённом закрытии граница = 0 (можно дотянуть до dismiss).
+        val floorPx = if (dismissOnSwipeDown) 0f else lowestRestAnchorPx(measured)
         val resistanceState = currentValue == SheetValue.Content || currentValue == SheetValue.ExpandedContent
         val inOvershoot = resistanceState &&
             (rawOvershootPx > 0f || (offset.value >= anchor - 0.5f && deltaHeightPx > 0f))
@@ -171,9 +177,13 @@ internal class XBottomSheetState internal constructor(
             offset.snapTo((anchor + resisted).coerceAtMost(ceiling))
         } else {
             rawOvershootPx = 0f
-            offset.snapTo((offset.value + deltaHeightPx).coerceIn(0f, ceiling))
+            offset.snapTo((offset.value + deltaHeightPx).coerceIn(floorPx, ceiling))
         }
     }
+
+    // Самый нижний разрешённый якорь покоя (без Hidden). Ниже него драг не пускаем при dismissOnSwipeDown=false.
+    private fun lowestRestAnchorPx(measured: SheetMetrics): Float =
+        settleCandidates(measured, dismissOnSwipeDown = false).firstOrNull()?.second?.toFloat() ?: 0f
 
     // Settle после отпускания (§5): по скорости и ближайшему якорю. Собираем отсортированные якоря доступных
     // стейтов; при скорости — ближайший якорь ПО НАПРАВЛЕНИЮ, при малой скорости — ближайший по расстоянию
