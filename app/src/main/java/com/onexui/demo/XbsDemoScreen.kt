@@ -74,7 +74,10 @@ private val SPORTS: List<String> = listOf(
     "Настольный теннис", "Киберспорт", "Бокс", "MMA", "Регби", "Крикет", "Дартс",
     "Бильярд", "Снукер", "Гольф", "Бадминтон", "Водное поло", "Флорбол", "Футзал",
     "Пляжный волейбол", "Формула-1", "Биатлон", "Лыжные гонки", "Плавание", "Лёгкая атлетика",
-    "Шахматы", "Керлинг", "Американский футбол",
+    "Шахматы", "Керлинг", "Американский футбол", "Гребля", "Стрельба", "Фехтование",
+    "Тяжёлая атлетика", "Спортивная гимнастика", "Художественная гимнастика", "Триатлон",
+    "Конный спорт", "Парусный спорт", "Скалолазание", "Сёрфинг", "Скейтбординг", "BMX",
+    "Хоккей на траве", "Софтбол", "Лакросс", "Сквош", "Падел", "Пляжный футбол", "Кабадди",
 )
 
 private val MarkerColors: List<Color> = listOf(
@@ -194,8 +197,8 @@ private fun CaseHugeList(onClose: () -> Unit) {
     }
 }
 
-// (c) skipCollapsed = true: контент БЕЗ лимита 60% (лимит — Status Bar). ~10 элементов: 60% < контент ≤ экрана →
-// стейт Content по высоте контента (без skip был бы Collapsed 60%) — видна разница ветки skip.
+// (c) skipCollapsed = true: контент БЕЗ лимита 60% (лимит — Status Bar). Длинный список (>экрана) → открытие
+// сразу ExpandedFullScreen, минуя Collapsed (без skip был бы Collapsed 60%) — видна ветка skip.
 @Composable
 private fun CaseSkipCollapsed(onClose: () -> Unit) {
     val scope = rememberCoroutineScope()
@@ -207,7 +210,7 @@ private fun CaseSkipCollapsed(onClose: () -> Unit) {
         onDismissRequest = dismiss,
         top = { PresetTitle("Популярное (skipCollapsed)") },
     ) {
-        SPORTS.take(10).forEachIndexed { index, sport ->
+        SPORTS.take(50).forEachIndexed { index, sport ->
             PresetMenuCell(
                 title = sport,
                 onClick = dismiss,
@@ -233,7 +236,7 @@ private fun CaseLoading(onClose: () -> Unit) {
         onDismissRequest = dismiss,
         top = { PresetTitle("Виды спорта") },
     ) {
-        SPORTS.take(8).forEachIndexed { index, sport ->
+        SPORTS.take(50).forEachIndexed { index, sport ->
             PresetMenuCell(
                 title = sport,
                 onClick = dismiss,
@@ -320,7 +323,7 @@ private fun CaseImeSearch(onClose: () -> Unit) {
     var query by remember { mutableStateOf("") }
     val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) { state.show() }
-    val filtered = SPORTS.take(6).filter { sport -> sport.contains(query, ignoreCase = true) }
+    val filtered = SPORTS.take(50).filter { sport -> sport.contains(query, ignoreCase = true) }
     XBottomSheet(
         state = state,
         onDismissRequest = dismiss,
@@ -350,7 +353,7 @@ private fun CaseImeBottomUnderKeyboard(onClose: () -> Unit) {
     var query by remember { mutableStateOf("") }
     val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) { state.show() }
-    val filtered = SPORTS.take(8).filter { sport -> sport.contains(query, ignoreCase = true) }
+    val filtered = SPORTS.take(50).filter { sport -> sport.contains(query, ignoreCase = true) }
     XBottomSheet(
         state = state,
         onDismissRequest = dismiss,
