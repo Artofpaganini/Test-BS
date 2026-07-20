@@ -80,6 +80,35 @@
 мусор в contentHeightPx и падение. Фикс: полноценный `MeasurePolicy` c override `maxIntrinsicHeight` (конечная
 высота = список + bottom + navBar) + guard от Infinity в `measure`.
 
+## Раунд 6 — рывок при возврате из сопротивления (репорт юзера, 2026-07-20)
+
+Симптом: эффект растягивания (драг за drag handle + отпускание) возвращался «через раз» рывком — лист
+застревал вверху и спрыгивал. Диагностика логами (лог юзера — решающий): жест ФРАГМЕНТИРУЕТСЯ на сессии,
+`settle` стартует `animateTo` возврата, а прилетевший позже `dragBy.snapTo` (независимый `scope.launch`) её
+`CANCELLED` — offset застревает на overshoot, потом финальный settle доигрывает = рывок. Корень — гонка
+независимых корутин `scope.launch { dragBy }` и `scope.launch { settle }` над одним `offset` (мьютекс Animatable).
+
+Фикс: все мутации offset сериализованы через ОДИН FIFO-канал `Channel<GestureCommand>` с единственным
+потребителем `processGestures` (запускается раз из XBottomSheet). Drag'и применяются inline; settle крутится
+дочерним job'ом — следующий Drag отменяет его `cancelAndJoin` ДО первого кадра → нет видимого дёрганья.
+Команды — чистые data-класс без лямбд (правило юзера); конфиг закрытия (`dismissOnSwipeDown`/`onDismissRequest`)
+живёт в свойствах стейта. Жесты зовут `enqueueDrag`/`enqueueSettle` (синхронно, не suspend). Убраны `scope`
+из `sheetDrag`/`SheetNestedScrollConnection`.
+
+Верификация: 6 агрессивных драг-отпусканий → каждый ровно один `animateTo … DONE` за ~640мс, **ноль CANCELLED**
+(было — CANCELLED через раз); видео-монтаж возврата монотонный (без прыжка вверх). Регрессия: (a) свайп→закрытие,
+(b1) свайп вверх→Expanded/вниз→Collapsed, (j) драг вниз→pinned — зелёные.
+
+## Раунд 7 — консолидация snapshotFlow в SheetSnapshotFlowManager (запрос юзера)
+
+Все РЕАКТИВНЫЕ snapshotFlow-наблюдатели листа сведены в один `SheetSnapshotFlowManager` (файл
+`SheetKeyboard.kt` → `SheetSnapshotFlowManager.kt`, git mv): вместо 3 разрозненных `LaunchedEffect { snapshotFlow{}
+.collect }` в XBottomSheet — один LaunchedEffect с 3 дочерними коллекторами: (1) рост контента →
+`onContentRemeasured`; (2) клавиатура → авто-FullScreen/откат (§6); (3) Hidden → дроп IME (§6). `snapToCurrentAnchor`
+(поворот) оставлен отдельно — это one-shot по размерам экрана, не snapshotFlow. `awaitMetrics`/`contentReady` в
+стейте — one-shot `first()`, не персистентные коллекторы, не трогались. Верифицировано: (i) IME авто-FullScreen +
+дроп при закрытии, (k) рост контента → авто-FullScreen — зелёные.
+
 ## Отклонения от буквы спеки (помечены ПЕРЕСМОТРЕНО в XBS-SPEC.md)
 
 - Измеритель: кастомный Layout вместо SubcomposeLayout (требование юзера; Subcompose легален для Lazy-слотов).

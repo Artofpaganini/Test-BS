@@ -5,8 +5,6 @@ import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 import kotlin.math.exp
 
 // Сопротивление overshoot (§5): max * (1 - exp(-raw/max)). Применяется ТОЛЬКО в Content и ExpandedContent
@@ -16,29 +14,22 @@ internal fun resistedOvershoot(rawOvershootPx: Float, maxOvershootPx: Float): Fl
 
 // Драг листа за неподвижные области (хендл / top / bottom): вертикальный жест двигает высоту.
 // Скролл-область Middle обслуживается nested-scroll'ом; сюда попадают жесты вне списка. Знак: вниз (delta>0)
-// уменьшает высоту (dragBy(-delta)); velocity наследует то же соглашение (вниз>0 → collapse/dismiss).
+// уменьшает высоту (enqueueDrag(-delta)); velocity наследует то же соглашение (вниз>0 → collapse/dismiss).
+// Драг и settle кладутся в FIFO-канал стейта (enqueueDrag/enqueueSettle) — один потребитель применяет их по
+// порядку, поэтому хвостовой drag не может отменить settle-анимацию (см. XBottomSheetState.processGestures).
 @Composable
 internal fun Modifier.sheetDrag(
     state: XBottomSheetState,
     enabled: Boolean,
-    scope: CoroutineScope,
-    dismissOnSwipeDown: Boolean,
-    onDismissRequest: () -> Unit,
 ): Modifier {
     val draggableState = rememberDraggableState { delta ->
-        scope.launch { state.dragBy(-delta, dismissOnSwipeDown) }
+        state.enqueueDrag(-delta)
     }
     return this.draggable(
         state = draggableState,
         orientation = Orientation.Vertical,
         enabled = enabled,
         onDragStarted = { state.isDragging = true },
-        onDragStopped = { velocity ->
-            state.settle(
-                velocity = velocity,
-                dismissOnSwipeDown = dismissOnSwipeDown,
-                onDismissRequest = onDismissRequest,
-            )
-        },
+        onDragStopped = { velocity -> state.enqueueSettle(velocity) },
     )
 }

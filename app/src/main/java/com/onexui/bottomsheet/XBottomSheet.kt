@@ -19,12 +19,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -44,9 +43,6 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import com.onexui.bottomsheet.presets.PresetLoader
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.launch
 import org.xplatform.uikit.compose.modifier.keyboard.adjustment.withAdjustmentForKeyboard
 import org.xplatform.uikit.compose.modifier.keyboard.lift.KeyboardLiftState
 import org.xplatform.uikit.compose.modifier.keyboard.lift.rememberKeyboardLiftState
@@ -79,7 +75,6 @@ internal fun XBottomSheet(
     middle: @Composable ColumnScope.() -> Unit,
 ) {
     val density = LocalDensity.current
-    val scope = rememberCoroutineScope()
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
     // Скролл Middle: единственный скролл листа. Поднят сюда, чтобы жить на уровне листа (переживает
@@ -111,47 +106,36 @@ internal fun XBottomSheet(
     val interactionsEnabled = dragHandle != null && !state.isLoading && !imeVisible
     val isFullScreen = state.currentValue == SheetValue.ExpandedFullScreen
 
-    // Рост/уменьшение контента (подгрузка списка): высота листа следует за контентом. Измеритель (Layout)
-    // при смене контента переизмеряется (relayout поднимается от списка), intrinsic обновляется → contentHeightPx
-    // меняется → snapshotFlow. onContentRemeasured сам гейтит isVisible. КАЖДЫЙ пересчёт — в отдельном launch:
-    // его offset.animateTo прерывается конкурирующей анимацией (show/settle) с CancellationException, и без
-    // launch это отменило бы сам коллектор (он бы умер после первого прерывания). Дочерний launch изолирует
-    // отмену — коллектор живёт и ловит последующие изменения контента.
-    LaunchedEffect(state) {
-        snapshotFlow { state.metrics?.contentHeightPx }
-            .filterNotNull()
-            .collect { launch { state.onContentRemeasured() } }
-    }
-    // Поворот/resize: высота снапится к якорю текущего стейта (без анимации).
-    LaunchedEffect(state, screenHeightPx, statusBarPx) { state.snapToCurrentAnchor() }
-    // Показ IME → авто-переход в ExpandedFullScreen при нехватке места (§6). Для StayUnderKeyboard —
-    // всегда FullScreen при показе IME (bottom должен доставать до нижней кромки экрана, под клавиатуру).
-    SheetKeyboardAutoFullScreenEffect(
+    // Все реактивные snapshotFlow-наблюдатели листа — в одном месте (SheetSnapshotFlowManager):
+    // рост контента → высота за контентом; клавиатура → авто-FullScreen/откат (§6); Hidden → дроп IME (§6).
+    // onSheetHidden роняет клавиатуру: иначе keyboard-lift оффсет продолжал бы поднимать контейнер и лист
+    // «улетел» бы вверх, отцепившись от нижней кромки. alwaysFullScreenOnIme=true для StayUnderKeyboard —
+    // bottom должен доставать до нижней кромки экрана, под клавиатуру.
+    SheetSnapshotFlowManager(
         state = state,
         keyboardState = keyboardState,
-        alwaysFullScreen = bottomKeyboardBehavior == KeyboardBottomBehavior.StayUnderKeyboard && bottom != null,
+        alwaysFullScreenOnIme = bottomKeyboardBehavior == KeyboardBottomBehavior.StayUnderKeyboard && bottom != null,
+        onSheetHidden = {
+            keyboardController?.hide()
+            focusManager.clearFocus(force = true)
+        },
     )
-    // Закрытие БШ при открытой клавиатуре (§6, усиление юзера): как только лист уходит в Hidden, ПРИНУДИТЕЛЬНО
-    // роняем клавиатуру — иначе keyboard-lift оффсет (withAdjustmentForKeyboard) продолжал бы поднимать
-    // контейнер, и лист «улетел» бы вверх, отцепившись от нижней кромки. Дроп синхронно с началом анимации
-    // закрытия → лифт уходит к 0 вместе с высотой, лист остаётся прижат к низу.
-    LaunchedEffect(state) {
-        snapshotFlow { state.currentValue == SheetValue.Hidden }
-            .collect { hidden ->
-                if (hidden) {
-                    keyboardController?.hide()
-                    focusManager.clearFocus(force = true)
-                }
-            }
-    }
+    // Поворот/resize: высота снапится к якорю текущего стейта (без анимации). one-shot по размерам экрана —
+    // не snapshotFlow, поэтому вне менеджера (иначе смена размеров пере-подписывала бы коллекторы).
+    LaunchedEffect(state, screenHeightPx, statusBarPx) { state.snapToCurrentAnchor() }
 
-    val nestedScrollConnection = remember(state, scope, interactionsEnabled, dismissOnSwipeDown) {
+    // Конфиг закрытия для жестов: пишем в стейт (команды канала — без лямбд). onDismissRequest берём свежий.
+    SideEffect {
+        state.dismissOnSwipeDown = dismissOnSwipeDown
+        state.onDismissRequest = { currentOnDismiss() }
+    }
+    // Единственный потребитель канала жестов: применяет drag/settle по порядку (без гонок), один на весь лист.
+    LaunchedEffect(state) { state.processGestures() }
+
+    val nestedScrollConnection = remember(state, interactionsEnabled) {
         SheetNestedScrollConnection(
             state = state,
-            scope = scope,
             interactionsEnabled = interactionsEnabled,
-            dismissOnSwipeDown = dismissOnSwipeDown,
-            onDismissRequest = { currentOnDismiss() },
         )
     }
     Box(modifier = Modifier.fillMaxSize().then(modifier)) {
@@ -172,9 +156,6 @@ internal fun XBottomSheet(
             dragHandle = dragHandle,
             interactionsEnabled = interactionsEnabled,
             nestedScrollConnection = nestedScrollConnection,
-            scope = scope,
-            dismissOnSwipeDown = dismissOnSwipeDown,
-            onDismissRequest = { currentOnDismiss() },
             keyboardState = keyboardState,
             isFullScreen = isFullScreen,
             bottomKeyboardBehavior = bottomKeyboardBehavior,
@@ -233,9 +214,6 @@ private fun SheetContainer(
     dragHandle: DragHandleStyle?,
     interactionsEnabled: Boolean,
     nestedScrollConnection: SheetNestedScrollConnection,
-    scope: CoroutineScope,
-    dismissOnSwipeDown: Boolean,
-    onDismissRequest: () -> Unit,
     keyboardState: State<KeyboardLiftState>,
     isFullScreen: Boolean,
     bottomKeyboardBehavior: KeyboardBottomBehavior,
@@ -276,13 +254,7 @@ private fun SheetContainer(
             .then(shadowModifier)
             .then(keyboardAdjustmentModifier)
             .nestedScroll(nestedScrollConnection)
-            .sheetDrag(
-                state = state,
-                enabled = interactionsEnabled,
-                scope = scope,
-                dismissOnSwipeDown = dismissOnSwipeDown,
-                onDismissRequest = onDismissRequest,
-            ),
+            .sheetDrag(state = state, enabled = interactionsEnabled),
     ) { measurables, constraints ->
         val body = measurables.first()
         val width = constraints.maxWidth

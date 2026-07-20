@@ -8,8 +8,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.abs
 
@@ -158,9 +163,54 @@ internal class XBottomSheetState internal constructor(
         if (updated != metrics) metrics = updated
     }
 
+    // Команды жестов сериализуются через ОДИН FIFO-канал (см. processGestures) — иначе независимые
+    // scope.launch { dragBy } и scope.launch { settle } гоняются: settle стартует анимацию возврата, а
+    // прилетевший позже dragBy.snapTo её отменяет (лист «застревает вверху и спрыгивает»). Команды — чистые
+    // данные без лямбд; конфиг закрытия (dismissOnSwipeDown / onDismissRequest) живёт в свойствах стейта.
+    private sealed interface GestureCommand {
+        data class Drag(val deltaHeightPx: Float) : GestureCommand
+        data class Settle(val velocity: Float) : GestureCommand
+    }
+
+    private val gestureCommands = Channel<GestureCommand>(Channel.UNLIMITED)
+
+    // Конфиг закрытия — задаётся из XBottomSheet (свойства, не лямбды в командах). settle/dragBy читают отсюда.
+    internal var dismissOnSwipeDown: Boolean = true
+    internal var onDismissRequest: () -> Unit = {}
+
+    // Вызывается СИНХРОННО из жестов (nested-scroll / draggable), не suspend. Кладёт команду в FIFO-канал.
+    internal fun enqueueDrag(deltaHeightPx: Float) {
+        isDragging = true
+        gestureCommands.trySend(GestureCommand.Drag(deltaHeightPx))
+    }
+
+    internal fun enqueueSettle(velocity: Float) {
+        gestureCommands.trySend(GestureCommand.Settle(velocity))
+    }
+
+    // Единственный потребитель канала (запускается один раз из XBottomSheet). Drag'и применяются inline
+    // (snapTo, быстро); settle крутится в дочернем job'е, чтобы следующий Drag мог его отменить. Ключевое:
+    // Settle сразу за которым идёт Drag отменяется ДО первого кадра анимации → нет дёрганья возврата.
+    internal suspend fun processGestures(): Unit = coroutineScope {
+        var settleJob: Job? = null
+        for (command in gestureCommands) {
+            when (command) {
+                is GestureCommand.Drag -> {
+                    settleJob?.cancelAndJoin()
+                    settleJob = null
+                    dragBy(command.deltaHeightPx)
+                }
+                is GestureCommand.Settle -> {
+                    settleJob?.cancelAndJoin()
+                    settleJob = launch { settle(command.velocity) }
+                }
+            }
+        }
+    }
+
     // Живой драг за хендл/контент: двигаем высоту, с сопротивлением на overshoot в Content/ExpandedContent.
     // Overshoot аккумулируется СЫРЫМ (rawOvershootPx), сопротивление применяется к сумме — не итеративно.
-    internal suspend fun dragBy(deltaHeightPx: Float, dismissOnSwipeDown: Boolean) {
+    private suspend fun dragBy(deltaHeightPx: Float) {
         val measured = metrics ?: return
         val ceiling = measured.maxHeightPx.toFloat()
         val anchor = measured.anchorPx(currentValue, skipCollapsed).toFloat()
@@ -188,11 +238,7 @@ internal class XBottomSheetState internal constructor(
     // Settle после отпускания (§5): по скорости и ближайшему якорю. Собираем отсортированные якоря доступных
     // стейтов; при скорости — ближайший якорь ПО НАПРАВЛЕНИЮ, при малой скорости — ближайший по расстоянию
     // (граница между соседями = midpoint). Hidden в наборе = свайп-закрытие (если dismissOnSwipeDown).
-    internal suspend fun settle(
-        velocity: Float,
-        dismissOnSwipeDown: Boolean,
-        onDismissRequest: () -> Unit,
-    ) {
+    private suspend fun settle(velocity: Float) {
         isDragging = false
         rawOvershootPx = 0f
         imePromotedFrom = null // ручное взаимодействие с высотой отменяет авто-откат при скрытии IME

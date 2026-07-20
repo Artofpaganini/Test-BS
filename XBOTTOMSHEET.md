@@ -14,7 +14,8 @@ app/src/main/java/
 │   ├── SheetAnchors.kt                # SheetValue (6), SheetMetrics, openTarget/expandTarget/anchorPx
 │   ├── SheetNestedScroll.kt           # связка скролла Middle с высотой
 │   ├── SheetDragGestures.kt           # драг за контент
-│   ├── SheetKeyboard.kt               # IME-эффекты (авто-FullScreen, откат, дроп клавиатуры)
+│   ├── SheetSnapshotFlowManager.kt    # ВСЕ реактивные snapshotFlow-наблюдатели в одном месте:
+│   │                                  #   рост контента · IME авто-FullScreen/откат · Hidden→дроп клавиатуры
 │   ├── DragHandle.kt                  # DragHandleStyle.Theme / .Static, read-only
 │   ├── AdditionalTop.kt               # sticky-слой: Expanded (утоплен 32dp) / Collapsed (peek 20dp)
 │   ├── XBottomSheetDefaults.kt        # ВШИТЫЕ токены (менять только по спеке)
