@@ -1,21 +1,19 @@
 package com.onexui.bottomsheet
 
 import android.view.WindowManager
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.ScrollState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,11 +34,13 @@ import androidx.compose.ui.layout.Measurable
 import androidx.compose.ui.layout.MeasurePolicy
 import androidx.compose.ui.layout.MeasureResult
 import androidx.compose.ui.layout.MeasureScope
+import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.onexui.bottomsheet.presets.PresetLoader
 import org.xplatform.uikit.compose.modifier.keyboard.adjustment.withAdjustmentForKeyboard
@@ -69,17 +69,15 @@ internal fun XBottomSheet(
     dismissOnOutsideTap: Boolean = true,
     dismissOnSwipeDown: Boolean = true,
     bottomKeyboardBehavior: KeyboardBottomBehavior = KeyboardBottomBehavior.Lift,
+    additionalTopCornerRadius: Dp = 0.dp,
     additionalTop: (@Composable () -> Unit)? = null,
     top: (@Composable () -> Unit)? = null,
     bottom: (@Composable () -> Unit)? = null,
-    middle: @Composable ColumnScope.() -> Unit,
+    middle: @Composable () -> Unit,
 ) {
     val density = LocalDensity.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
-    // Скролл Middle: единственный скролл листа. Поднят сюда, чтобы жить на уровне листа (переживает
-    // рекомпозиции тела), передаётся в verticalScroll внутри SheetBody.
-    val middleScrollState = rememberScrollState()
     val currentOnDismiss by rememberUpdatedState(onDismissRequest)
     // Размеры экрана — из LocalWindowInfo.containerSize (px), без BoxWithConstraints. При повороте
     // containerSize обновляется сам → composition пересчитывается.
@@ -105,6 +103,12 @@ internal fun XBottomSheet(
     // при видимой IME жесты высоты выключены; закрытие только тапом снаружи/кнопкой).
     val interactionsEnabled = dragHandle != null && !state.isLoading && !imeVisible
     val isFullScreen = state.currentValue == SheetValue.ExpandedFullScreen
+    // Плавная анимация появления/сворачивания Additional Top: 1 = Expanded (карточка утоплена overlap),
+    // 0 = скрыта (уехала вверх). Считается ОДИН раз (не в SubcomposeLayout-теле, чтобы не дублироваться).
+    val additionalTopFraction by animateFloatAsState(
+        targetValue = if (state.additionalTopState == AdditionalTopState.Expanded) 1f else 0f,
+        label = "additionalTopFraction",
+    )
 
     // Все реактивные snapshotFlow-наблюдатели листа — в одном месте (SheetSnapshotFlowManager):
     // рост контента → высота за контентом; клавиатура → авто-FullScreen/откат (§6); Hidden → дроп IME (§6).
@@ -161,7 +165,8 @@ internal fun XBottomSheet(
             bottomKeyboardBehavior = bottomKeyboardBehavior,
             keyboardHeightPx = keyboardHeightPx,
             navBarPx = navBarPx,
-            middleScrollState = middleScrollState,
+            additionalTopFraction = additionalTopFraction,
+            additionalTopCornerRadius = additionalTopCornerRadius,
             additionalTop = additionalTop,
             top = top,
             bottom = bottom,
@@ -219,11 +224,12 @@ private fun SheetContainer(
     bottomKeyboardBehavior: KeyboardBottomBehavior,
     keyboardHeightPx: Int,
     navBarPx: Int,
-    middleScrollState: ScrollState,
+    additionalTopFraction: Float,
+    additionalTopCornerRadius: Dp,
     additionalTop: (@Composable () -> Unit)?,
     top: (@Composable () -> Unit)?,
     bottom: (@Composable () -> Unit)?,
-    middle: @Composable ColumnScope.() -> Unit,
+    middle: @Composable () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val ceilingPx = (screenHeightPx - statusBarPx).coerceAtLeast(0)
@@ -233,51 +239,63 @@ private fun SheetContainer(
     } else {
         Modifier
     }
-    Layout(
-        content = {
-            SheetBody(
-                state = state,
-                dragHandle = dragHandle,
-                keyboardState = keyboardState,
-                isFullScreen = isFullScreen,
-                bottomKeyboardBehavior = bottomKeyboardBehavior,
-                keyboardHeightPx = keyboardHeightPx,
-                navBarPx = navBarPx,
-                middleScrollState = middleScrollState,
-                additionalTop = additionalTop,
-                top = top,
-                bottom = bottom,
-                middle = middle,
-            )
-        },
+    // fillHeight: detect-слот wrap'ит тело (для замера контента), place-слот заполняет offset (фон Surface тянется
+    // на всю высоту листа — при overshoot/растяжении снизу не остаётся прозрачной дыры).
+    val bodyOf: @Composable (Boolean) -> Unit = { fillHeight ->
+        SheetBody(
+            state = state,
+            dragHandle = dragHandle,
+            keyboardState = keyboardState,
+            isFullScreen = isFullScreen,
+            bottomKeyboardBehavior = bottomKeyboardBehavior,
+            keyboardHeightPx = keyboardHeightPx,
+            navBarPx = navBarPx,
+            fillHeight = fillHeight,
+            additionalTopFraction = additionalTopFraction,
+            additionalTopCornerRadius = additionalTopCornerRadius,
+            additionalTop = additionalTop,
+            top = top,
+            bottom = bottom,
+            middle = middle,
+        )
+    }
+    // SubcomposeLayout: тело композируется ОДИН раз, меряется ДВАЖДЫ. (1) detect — при ОГРАНИЧЕННОЙ высоте
+    // maxHeight: короткий контент wrap (< maxHeight), скроллируемый/ленивый (LazyColumn и т.п.) fill (== maxHeight).
+    // Это contentHeightPx → режим wrap/fill (см. SheetMetrics.fills). LazyColumn при ограниченной высоте НЕ
+    // крашится и wrap'ится при малом контенте (проверено пробом). (2) place — при fixed(offset): реальная высота
+    // листа (offset может превышать maxHeight на overshoot верхнего якоря → до screenHeightPx).
+    SubcomposeLayout(
         modifier = modifier
             .then(shadowModifier)
             .then(keyboardAdjustmentModifier)
             .nestedScroll(nestedScrollConnection)
             .sheetDrag(state = state, enabled = interactionsEnabled),
-    ) { measurables, constraints ->
-        val body = measurables.first()
+    ) { constraints ->
         val width = constraints.maxWidth
-        // Плейсмент: тело кладём высотой offset (текущая высота листа), но не выше потолка. Reflow top/middle/
-        // bottom корректный (sticky-низ у нижнего края offset), клип не нужен.
-        val placeHeight = state.offset.value.roundToInt().coerceIn(0, ceilingPx)
-        // Натуральная высота контента — intrinsic (unclamped): точное M+S синхронно (в т.ч. на Hidden). При
-        // росте контента relayout поднимается от списка → Layout переизмеряется → intrinsic обновляется →
-        // contentHeightPx меняется → onContentRemeasured тянет высоту.
-        val naturalHeight = body.maxIntrinsicHeight(width)
-        val placeable = body.measure(Constraints.fixed(width = width, height = placeHeight))
+        // Один Measurable нельзя мерить дважды за пасс → два слота. DETECT — отдельная (невидимая) композиция
+        // тела, меряется при maxHeight (стабильно между кадрами): короткий контент wrap (<maxHeight),
+        // ленивый/скролл fill (==maxHeight) → режим. PLACE — видимая композиция, меряется при fixed(offset).
+        val detectHeight = subcompose(SlotDetect) { bodyOf(false) }.first().measure(
+            Constraints(maxWidth = width, minHeight = 0, maxHeight = ceilingPx),
+        ).height
+        state.updateMetrics(
+            screenHeightPx = screenHeightPx,
+            statusBarPx = statusBarPx,
+            contentHeightPx = detectHeight,
+            loadingSheetHeightPx = loadingSheetHeightPx,
+        )
+        val placeHeight = state.offset.value.roundToInt().coerceIn(0, screenHeightPx)
+        val placeable = subcompose(SlotPlace) { bodyOf(true) }.first().measure(
+            Constraints.fixed(width = width, height = placeHeight),
+        )
         layout(width = width, height = placeHeight) {
-            // Репорт в state с guard (updateMetrics не пишет одинаковое) — не грязним snapshot каждый пасс.
-            state.updateMetrics(
-                screenHeightPx = screenHeightPx,
-                statusBarPx = statusBarPx,
-                contentHeightPx = naturalHeight,
-                loadingSheetHeightPx = loadingSheetHeightPx,
-            )
             placeable.place(x = 0, y = 0)
         }
     }
 }
+
+private object SlotDetect
+private object SlotPlace
 
 // Тело листа: Surface(20,20,0,0) с top(sticky) / middle(scroll) / bottom(sticky). Основная часть получает
 // фиксированную высоту (от измерителя / AdditionalTopStack), поэтому weight у middle работает без внешнего
@@ -292,15 +310,21 @@ private fun SheetBody(
     bottomKeyboardBehavior: KeyboardBottomBehavior,
     keyboardHeightPx: Int,
     navBarPx: Int,
-    middleScrollState: ScrollState,
+    fillHeight: Boolean,
+    additionalTopFraction: Float,
+    additionalTopCornerRadius: Dp,
     additionalTop: (@Composable () -> Unit)?,
     top: (@Composable () -> Unit)?,
     bottom: (@Composable () -> Unit)?,
-    middle: @Composable ColumnScope.() -> Unit,
+    middle: @Composable () -> Unit,
 ) {
+    val density = LocalDensity.current
     // StayUnderKeyboard активен только когда есть bottom-слот. Тогда bottom прижат к нижней кромке листа и
     // уходит под клавиатуру (кастомный layout ниже), а не поднимается вместе с контентом.
     val stayUnderKeyboard = bottomKeyboardBehavior == KeyboardBottomBehavior.StayUnderKeyboard && bottom != null
+    // fillHeight (place-слот): тело заполняет offset (Surface/Column fillMaxSize, middle weight fill=true) — фон
+    // листа тянется на всю высоту, при растяжении снизу нет прозрачной дыры. !fillHeight (detect): wrap по контенту.
+    val sizeModifier = if (fillHeight) Modifier.fillMaxSize() else Modifier.fillMaxWidth()
     val middleShrinkModifier = if (isFullScreen && !stayUnderKeyboard) {
         Modifier.withKeyboardShrink(
             softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING,
@@ -309,49 +333,57 @@ private fun SheetBody(
     } else {
         Modifier
     }
-    val middleContent: @Composable ColumnScope.() -> Unit = {
+    // Middle БЕЗ нашего verticalScroll: скролл предоставляет сам контент (LazyColumn/LazyGrid/Column+verticalScroll).
+    // weight(1f, fill=false): короткий контент wrap'ится (лист по высоте контента), ленивый/скролл заполняет
+    // (fill-режим, фикс-якоря) + резервирует место bottom. Loading → Loader вместо контента.
+    val middleContent: @Composable () -> Unit = {
         if (state.isLoading) {
             PresetLoader()
         } else {
             middle()
         }
     }
+    // Высота ТЕЛА wrap'ится (fillMaxWidth, без fillMaxHeight) — SubcomposeLayout при detect-замере видит натуральную
+    // высоту контента; при place-замере fixed(offset) форсит высоту листа. fillMaxSize сломал бы wrap-детект.
     val sheetSurface: @Composable () -> Unit = {
         Surface(
-            modifier = Modifier.fillMaxSize(),
+            modifier = sizeModifier,
             shape = XBottomSheetDefaults.Shape,
             color = XBottomSheetDefaults.SheetBackground,
         ) {
             if (stayUnderKeyboard) {
                 // Режим «bottom под клавиатурой». Инсет nav bar и клавиатуру обрабатывает кастомный layout
                 // (не windowInsetsPadding), чтобы bottom мог опуститься ПОД клавиатуру к нижней кромке экрана.
-                Column(modifier = Modifier.fillMaxSize()) {
+                Column(modifier = sizeModifier) {
                     top?.invoke()
                     StayUnderKeyboardContent(
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        modifier = (if (fillHeight) Modifier.weight(1f) else Modifier.weight(1f, fill = false))
+                            .fillMaxWidth(),
                         keyboardHeightPx = keyboardHeightPx,
                         navBarPx = navBarPx,
-                        middleScrollState = middleScrollState,
                         middle = middleContent,
                         bottom = bottom,
                     )
                 }
             } else {
-                // Surface — edge-to-edge (фон заливает зону под nav bar). Инсет навигации накладываем на КОНТЕНТ
-                // внутри Surface: bottom-слот встаёт над баром, фон продолжается под ним. Паддинг внутри
-                // измеряемого тела → intrinsic-высота включает inset автоматически (contentHeightPx корректна).
+                // Lift (дефолт): над клавиатурой поднимается ВЕСЬ контент — top + middle + bottom. Вне FullScreen
+                // подъём делает withAdjustmentForKeyboard (весь лист едет вверх, bottom едет вместе с ним). В
+                // FullScreen лист уже у потолка, выше не уедет → поджимаем НИЗ контента паддингом на высоту
+                // клавиатуры: middle (weight) ужимается, а bottom встаёт прямо над клавиатурой, а не под ней.
+                // Без IME — обычный инсет nav bar (bottom над баром, фон Surface продолжается под ним edge-to-edge).
+                val liftBottomInset = if (isFullScreen && keyboardHeightPx > 0) {
+                    Modifier.padding(bottom = with(density) { keyboardHeightPx.toDp() })
+                } else {
+                    Modifier.windowInsetsPadding(WindowInsets.navigationBars)
+                }
                 Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .windowInsetsPadding(WindowInsets.navigationBars),
+                    modifier = sizeModifier.then(liftBottomInset),
                 ) {
                     top?.invoke()
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
+                    Box(
+                        modifier = (if (fillHeight) Modifier.weight(1f) else Modifier.weight(1f, fill = false))
                             .fillMaxWidth()
-                            .then(middleShrinkModifier)
-                            .verticalScroll(middleScrollState),
+                            .then(middleShrinkModifier),
                     ) {
                         middleContent()
                     }
@@ -361,19 +393,18 @@ private fun SheetBody(
         }
     }
     Box(
-        modifier = Modifier
-            .fillMaxSize()
+        modifier = sizeModifier
             // No-op гаситель тапов по телу листа: consume up → тап не проваливается на scrim (сосед снизу по z)
             // и не закрывает лист. detectTapGestures пропускает drag'и (отменяется по slop) — драг листа/скролл
             // списка работают штатно.
             .pointerInput(Unit) { detectTapGestures {} },
     ) {
-        // Additional Top показываем ТОЛЬКО в Expanded. В Collapsed слот убирается полностью (по требованию
-        // юзера — не полоска-peek), лист рендерится один со своими скруглёнными углами. Смена состояния меняет
-        // contentHeight → onContentRemeasured анимирует высоту, карточка появляется/исчезает.
-        if (additionalTop != null && state.additionalTopState == AdditionalTopState.Expanded) {
+        // Additional Top держим смонтированным всегда (при наличии слота) — видимая высота карточки ПЛАВНО
+        // анимируется через additionalTopFraction (1 = Expanded, 0 = скрыта). Верхние углы карточки — cornerRadius.
+        if (additionalTop != null) {
             AdditionalTopStack(
-                additionalTopState = AdditionalTopState.Expanded,
+                visibleFraction = additionalTopFraction,
+                cornerRadius = additionalTopCornerRadius,
                 card = additionalTop,
                 surface = sheetSurface,
             )
@@ -398,8 +429,7 @@ private fun StayUnderKeyboardContent(
     modifier: Modifier,
     keyboardHeightPx: Int,
     navBarPx: Int,
-    middleScrollState: ScrollState,
-    middle: @Composable ColumnScope.() -> Unit,
+    middle: @Composable () -> Unit,
     bottom: @Composable () -> Unit,
 ) {
     val measurePolicy = remember(keyboardHeightPx, navBarPx) {
@@ -408,7 +438,8 @@ private fun StayUnderKeyboardContent(
     Layout(
         modifier = modifier,
         content = {
-            Column(modifier = Modifier.fillMaxWidth().verticalScroll(middleScrollState)) { middle() }
+            // middle сам предоставляет скролл (LazyColumn/verticalScroll) — наш verticalScroll не нужен.
+            Box(modifier = Modifier.fillMaxWidth()) { middle() }
             Box(modifier = Modifier.fillMaxWidth()) { bottom() }
         },
         measurePolicy = measurePolicy,

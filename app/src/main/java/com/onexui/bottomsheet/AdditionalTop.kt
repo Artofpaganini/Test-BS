@@ -1,8 +1,14 @@
 package com.onexui.bottomsheet
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.IntrinsicMeasurable
 import androidx.compose.ui.layout.IntrinsicMeasureScope
 import androidx.compose.ui.layout.Layout
@@ -12,33 +18,43 @@ import androidx.compose.ui.layout.MeasureResult
 import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
+import kotlin.math.roundToInt
 
-// Состояния Additional Top (§1). Переключаются ТОЛЬКО внешними факторами (кнопка/логика экрана),
-// не жестами листа. Кейс: «Добавить в купон» / «Отслеживать».
+// Состояния Additional Top (§1). Переключаются ТОЛЬКО внешними факторами (кнопка/логика экрана), не жестами.
+// Кейс: «Добавить в купон» / «Отслеживать».
 internal enum class AdditionalTopState { Expanded, Collapsed }
 
-// Стек «Additional Top + основная часть» со стики-перекрытием (§1, §E):
-// Expanded — карточка раскрыта, её нижние 32dp утоплены под основную часть (overlap); контент виден.
-// Collapsed — видна полоска 20dp (peek): её ФОН остаётся видимым, а КОНТЕНТ карточки уходит в Alpha 0.
-// Компонент отвечает только за перекрытие/высоту peek; фейд контента при неизменном фоне — задача слота
-// (карточка сама разделяет фон и контент, см. demo AdditionalTopCard) — иначе фейд всего слота сделал бы
-// полоску прозрачной (зазор вместо полоски). Основная часть (surface) рисуется ПОВЕРХ карточки (кладётся
-// позже) → перекрытие корректно по z. Высота карточки входит в contentHeight видимой частью (peek/natural−overlap).
+// Стек «Additional Top + основная часть» со стики-перекрытием. visibleFraction (ПЛАВНАЯ анимация из SheetBody):
+// 1 = Expanded (карточка раскрыта, нижние overlap-dp утоплены под основную часть), 0 = скрыта (полностью уехала
+// вверх). Видимая высота карточки = fraction * (natural − overlap). cornerRadius — верхние скругления карточки.
+// Основная часть (surface) рисуется ПОВЕРХ карточки (кладётся позже) → перекрытие корректно по z.
 @Composable
 internal fun AdditionalTopStack(
-    additionalTopState: AdditionalTopState,
+    visibleFraction: Float,
+    cornerRadius: Dp,
     card: @Composable () -> Unit,
     surface: @Composable () -> Unit,
 ) {
     val density = LocalDensity.current
     val overlapPx = with(density) { XBottomSheetDefaults.AdditionalTopOverlap.roundToPx() }
-    val peekPx = with(density) { XBottomSheetDefaults.AdditionalTopPeek.roundToPx() }
-    val measurePolicy = remember(additionalTopState, overlapPx, peekPx) {
-        AdditionalTopMeasurePolicy(additionalTopState, overlapPx, peekPx)
+    val measurePolicy = remember(visibleFraction, overlapPx) {
+        AdditionalTopMeasurePolicy(visibleFraction, overlapPx)
     }
     Layout(
         content = {
-            Box { card() }
+            // Клип карточки: скругляем ТОЛЬКО верхние углы (cornerRadius). Низ квадратный и уходит под Surface
+            // на overlap-dp (перекрытие в раскладке), поэтому квадратные нижние углы спрятаны за листом, а
+            // скруглённые верхние углы Surface «наезжают» на тело карточки → визуально это единое продолжение
+            // контента, без зазора-scrim. Карточка меряется натурально (wrapContentHeight unbounded, прижата к
+            // верху) и обрезается по clipToBounds до заданной высоты.
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(topStart = cornerRadius, topEnd = cornerRadius))
+                    .clipToBounds(),
+            ) {
+                Box(modifier = Modifier.wrapContentHeight(align = Alignment.Top, unbounded = true)) { card() }
+            }
             Box { surface() }
         },
         measurePolicy = measurePolicy,
@@ -46,15 +62,14 @@ internal fun AdditionalTopStack(
 }
 
 private class AdditionalTopMeasurePolicy(
-    private val additionalTopState: AdditionalTopState,
+    private val visibleFraction: Float,
     private val overlapPx: Int,
-    private val peekPx: Int,
 ) : MeasurePolicy {
 
-    private fun visibleCardPx(cardNaturalPx: Int): Int = when (additionalTopState) {
-        AdditionalTopState.Expanded -> (cardNaturalPx - overlapPx).coerceAtLeast(0)
-        AdditionalTopState.Collapsed -> peekPx
-    }
+    // Протрузия — видимая часть карточки НАД листом (анимируется fraction). Низ карточки (overlap) прячется
+    // под Surface, поэтому в высоту протрузии overlap не входит.
+    private fun protrusionPx(cardNaturalPx: Int): Int =
+        (visibleFraction.coerceIn(0f, 1f) * (cardNaturalPx - overlapPx).coerceAtLeast(0)).roundToInt()
 
     override fun MeasureScope.measure(
         measurables: List<Measurable>,
@@ -65,24 +80,25 @@ private class AdditionalTopMeasurePolicy(
         val width = constraints.maxWidth
         val totalHeight = constraints.maxHeight
         val cardNatural = cardMeasurable.maxIntrinsicHeight(width)
-        val visibleCard = visibleCardPx(cardNatural)
-        val surfaceHeight = (totalHeight - visibleCard).coerceAtLeast(0)
-        val cardPlaceable = cardMeasurable.measure(Constraints.fixed(width = width, height = cardNatural))
+        val protrusion = protrusionPx(cardNatural)
+        // Surface стоит на уровне протрузии; карточка тянется на overlap НИЖЕ верха Surface (низ утоплен под лист).
+        val surfaceHeight = (totalHeight - protrusion).coerceAtLeast(0)
+        val cardHeight = protrusion + overlapPx
+        val cardPlaceable = cardMeasurable.measure(Constraints.fixed(width = width, height = cardHeight))
         val surfacePlaceable = surfaceMeasurable.measure(Constraints.fixed(width = width, height = surfaceHeight))
         return layout(width, totalHeight) {
             cardPlaceable.place(x = 0, y = 0)
-            surfacePlaceable.place(x = 0, y = visibleCard)
+            surfacePlaceable.place(x = 0, y = protrusion)
         }
     }
 
-    // Натуральная высота стека = видимая часть карточки + натуральная высота основной части.
-    // Нужна корректная реализация: дефолтная intrinsic-логика прогнала бы measure с Infinity-высотой.
+    // Натуральная высота стека = протрузия карточки над листом + натуральная высота листа (overlap поглощён).
     override fun IntrinsicMeasureScope.maxIntrinsicHeight(
         measurables: List<IntrinsicMeasurable>,
         width: Int,
     ): Int {
         val cardNatural = measurables[0].maxIntrinsicHeight(width)
         val surfaceNatural = measurables[1].maxIntrinsicHeight(width)
-        return visibleCardPx(cardNatural) + surfaceNatural
+        return protrusionPx(cardNatural) + surfaceNatural
     }
 }

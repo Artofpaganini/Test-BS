@@ -12,6 +12,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -25,6 +35,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -36,6 +48,7 @@ import com.onexui.bottomsheet.AdditionalTopState
 import com.onexui.bottomsheet.DragHandleStyle
 import com.onexui.bottomsheet.KeyboardBottomBehavior
 import com.onexui.bottomsheet.XBottomSheet
+import com.onexui.bottomsheet.XSheetAnchor
 import com.onexui.bottomsheet.rememberXBottomSheetState
 import com.onexui.bottomsheet.presets.Preset1Button
 import com.onexui.bottomsheet.presets.PresetBodyText
@@ -65,8 +78,15 @@ private enum class DemoCase(val label: String) {
     G("(g) Additional Top — купон / отслеживать"),
     I("(i) IME — поиск: подъём / авто-FullScreen + shrink"),
     L("(l) IME — поиск + список + bottom ПОД клавиатурой"),
+    S("(s) IME — поиск + список + bottom НАД клавиатурой"),
     J("(j) Закрытия выключены — только кнопкой"),
     K("(k) Static handle + рост контента → авто-FullScreen"),
+    M("(m) Контент: LazyVerticalGrid (сетка 2 кол.)"),
+    N("(n) Контент: LazyRow (гориз., короткий → wrap)"),
+    O("(o) Контент: LazyColumn + LazyRow (карусели)"),
+    P("(p) Контент: Column + verticalScroll"),
+    Q("(q) Контент: LazyColumn + вложенный LazyColumn"),
+    R("(r) Кастомный якорь 50% (свайп: peek → 50% → full)"),
 }
 
 private val SPORTS: List<String> = listOf(
@@ -84,9 +104,33 @@ private val MarkerColors: List<Color> = listOf(
     Color(0xFFEF5350), Color(0xFF42A5F5), Color(0xFF66BB6A), Color(0xFFFFA726), Color(0xFFAB47BC),
 )
 
+// Список спорта на LazyColumn (сам скроллит). fillMaxWidth (НЕ fillMaxSize): высота wrap'ится — мало айтемов →
+// wrap-режим листа (по контенту), много → fill (заполняет, фикс-якоря). state saveable → скролл переживает ротацию.
+@Composable
+private fun SportLazyList(sports: List<String>, onClick: () -> Unit) {
+    LazyColumn(modifier = Modifier.fillMaxWidth(), state = rememberLazyListState()) {
+        itemsIndexed(sports) { index, sport ->
+            PresetMenuCell(
+                title = sport,
+                onClick = onClick,
+                leadingColor = MarkerColors[index % MarkerColors.size],
+            )
+        }
+    }
+}
+
 @Composable
 internal fun XbsDemoScreen() {
-    var activeCase by remember { mutableStateOf<DemoCase?>(null) }
+    // saveable, чтобы активный кейс (а с ним стейт листа) переживал ротацию — иначе демо-хост сбросился бы в null.
+    var activeCase by rememberSaveable(
+        stateSaver = Saver(
+            save = { case -> case?.name ?: "" },
+            restore = { saved ->
+                val name = saved as? String
+                DemoCase.entries.firstOrNull { entry -> entry.name == name }
+            },
+        ),
+    ) { mutableStateOf<DemoCase?>(null) }
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(
             modifier = Modifier
@@ -130,8 +174,128 @@ private fun XbsCaseHost(case: DemoCase, onClose: () -> Unit) {
         DemoCase.G -> CaseAdditionalTop(onClose)
         DemoCase.I -> CaseImeSearch(onClose)
         DemoCase.L -> CaseImeBottomUnderKeyboard(onClose)
+        DemoCase.S -> CaseImeBottomAboveKeyboard(onClose)
         DemoCase.J -> CaseNoDismiss(onClose)
         DemoCase.K -> CaseStaticGrow(onClose)
+        DemoCase.M -> CaseGrid(onClose)
+        DemoCase.N -> CaseLazyRow(onClose)
+        DemoCase.O -> CaseCarousels(onClose)
+        DemoCase.P -> CaseVerticalScroll(onClose)
+        DemoCase.Q -> CaseNestedLazyColumn(onClose)
+        DemoCase.R -> CaseCustomAnchor(onClose)
+    }
+}
+
+// (r) Кастомный якорь: между Collapsed(peek) и Expanded(full) добавлен свой якорь 50% экрана. Свайп по листу
+// останавливается на ближайшем из якорей: peek(2/3) / 50% / full. Разраб задаёт свои через customAnchors.
+@Composable
+private fun CaseCustomAnchor(onClose: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val state = rememberXBottomSheetState(customAnchors = listOf(XSheetAnchor("half", 0.5f)))
+    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
+    LaunchedEffect(Unit) { state.show() }
+    XBottomSheet(state = state, onDismissRequest = dismiss, top = { PresetTitle("Кастомный якорь 50%") }) {
+        SportLazyList(SPORTS, dismiss)
+    }
+}
+
+// (m) Контент = LazyVerticalGrid: сетка заполняет доступную высоту → fill-режим (Collapsed peek / Expanded).
+@Composable
+private fun CaseGrid(onClose: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val state = rememberXBottomSheetState()
+    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
+    LaunchedEffect(Unit) { state.show() }
+    XBottomSheet(state = state, onDismissRequest = dismiss, top = { PresetTitle("Сетка (LazyVerticalGrid)") }) {
+        LazyVerticalGrid(columns = GridCells.Fixed(2), modifier = Modifier.fillMaxWidth()) {
+            gridItems(SPORTS) { sport -> PresetMenuCell(title = sport, onClick = dismiss) }
+        }
+    }
+}
+
+// (n) Контент = LazyRow (горизонтальный, короткий по высоте) → wrap-режим: лист по высоте контента.
+@Composable
+private fun CaseLazyRow(onClose: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val state = rememberXBottomSheetState()
+    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
+    LaunchedEffect(Unit) { state.show() }
+    XBottomSheet(state = state, onDismissRequest = dismiss, top = { PresetTitle("Горизонтальный (LazyRow)") }) {
+        LazyRow(modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp)) {
+            items(SPORTS) { sport ->
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 8.dp)
+                        .height(96.dp)
+                        .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(12.dp))
+                        .padding(16.dp),
+                ) { Text(text = sport, color = MaterialTheme.colorScheme.onPrimaryContainer) }
+            }
+        }
+    }
+}
+
+// (o) Контент = LazyColumn с вложенными LazyRow (вертикальный список каруселей). Заполняет → fill-режим.
+// Вертикальный скролл листа и горизонтальный скролл каруселей не конфликтуют (разные оси).
+@Composable
+private fun CaseCarousels(onClose: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val state = rememberXBottomSheetState()
+    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
+    LaunchedEffect(Unit) { state.show() }
+    XBottomSheet(state = state, onDismissRequest = dismiss, top = { PresetTitle("Карусели (LazyColumn + LazyRow)") }) {
+        LazyColumn(modifier = Modifier.fillMaxWidth(), state = rememberLazyListState()) {
+            items(12) { row ->
+                PresetBodyText("Категория ${row + 1}")
+                LazyRow(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                    items(SPORTS) { sport ->
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 8.dp)
+                                .height(72.dp)
+                                .background(MarkerColors[(row) % MarkerColors.size], RoundedCornerShape(12.dp))
+                                .padding(16.dp),
+                        ) { Text(text = sport, color = Color.White) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// (p) Контент = Column + verticalScroll (не Lazy). Длинный → заполняет → fill-режим; короткий был бы wrap.
+@Composable
+private fun CaseVerticalScroll(onClose: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val state = rememberXBottomSheetState()
+    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
+    LaunchedEffect(Unit) { state.show() }
+    XBottomSheet(state = state, onDismissRequest = dismiss, top = { PresetTitle("Column + verticalScroll") }) {
+        Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+            SPORTS.forEachIndexed { index, sport ->
+                PresetMenuCell(title = sport, onClick = dismiss, leadingColor = MarkerColors[index % MarkerColors.size])
+            }
+        }
+    }
+}
+
+// (q) Контент = LazyColumn с вложенным LazyColumn фиксированной высоты (вложенный вертикальный скролл).
+@Composable
+private fun CaseNestedLazyColumn(onClose: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val state = rememberXBottomSheetState()
+    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
+    LaunchedEffect(Unit) { state.show() }
+    XBottomSheet(state = state, onDismissRequest = dismiss, top = { PresetTitle("Вложенный LazyColumn") }) {
+        LazyColumn(modifier = Modifier.fillMaxWidth(), state = rememberLazyListState()) {
+            item { PresetBodyText("Внешний LazyColumn. Ниже — вложенный LazyColumn фикс. высоты (свой скролл):") }
+            item {
+                LazyColumn(modifier = Modifier.fillMaxWidth().height(300.dp)) {
+                    items(SPORTS) { sport -> PresetMenuCell(title = sport, onClick = dismiss) }
+                }
+            }
+            items(SPORTS) { sport -> PresetMenuCell(title = sport, onClick = dismiss) }
+        }
     }
 }
 
@@ -165,13 +329,7 @@ private fun CaseMediumList(onClose: () -> Unit) {
         onDismissRequest = dismiss,
         top = { PresetTitle("Вид спорта (средний список)") },
     ) {
-        SPORTS.take(11).forEachIndexed { index, sport ->
-            PresetMenuCell(
-                title = sport,
-                onClick = dismiss,
-                leadingColor = MarkerColors[index % MarkerColors.size],
-            )
-        }
+        SportLazyList(SPORTS.take(11), dismiss)
     }
 }
 
@@ -187,13 +345,7 @@ private fun CaseHugeList(onClose: () -> Unit) {
         onDismissRequest = dismiss,
         top = { PresetTitle("Вид спорта (огромный список)") },
     ) {
-        SPORTS.forEachIndexed { index, sport ->
-            PresetMenuCell(
-                title = sport,
-                onClick = dismiss,
-                leadingColor = MarkerColors[index % MarkerColors.size],
-            )
-        }
+        SportLazyList(SPORTS, dismiss)
     }
 }
 
@@ -210,13 +362,7 @@ private fun CaseSkipCollapsed(onClose: () -> Unit) {
         onDismissRequest = dismiss,
         top = { PresetTitle("Популярное (skipCollapsed)") },
     ) {
-        SPORTS.take(50).forEachIndexed { index, sport ->
-            PresetMenuCell(
-                title = sport,
-                onClick = dismiss,
-                leadingColor = MarkerColors[index % MarkerColors.size],
-            )
-        }
+        SportLazyList(SPORTS.take(50), dismiss)
     }
 }
 
@@ -236,13 +382,7 @@ private fun CaseLoading(onClose: () -> Unit) {
         onDismissRequest = dismiss,
         top = { PresetTitle("Виды спорта") },
     ) {
-        SPORTS.take(50).forEachIndexed { index, sport ->
-            PresetMenuCell(
-                title = sport,
-                onClick = dismiss,
-                leadingColor = MarkerColors[index % MarkerColors.size],
-            )
-        }
+        SportLazyList(SPORTS.take(50), dismiss)
     }
 }
 
@@ -294,6 +434,7 @@ private fun CaseAdditionalTop(onClose: () -> Unit) {
     XBottomSheet(
         state = state,
         onDismissRequest = dismiss,
+        additionalTopCornerRadius = 16.dp,
         additionalTop = { AdditionalTopCard(collapsed = collapsed) },
         top = { PresetTitle("Событие") },
         bottom = {
@@ -332,13 +473,7 @@ private fun CaseImeSearch(onClose: () -> Unit) {
             PresetSearchField(query = query, onQueryChange = { value -> query = value })
         },
     ) {
-        filtered.forEachIndexed { index, sport ->
-            PresetMenuCell(
-                title = sport,
-                onClick = dismiss,
-                leadingColor = MarkerColors[index % MarkerColors.size],
-            )
-        }
+        SportLazyList(filtered, dismiss)
     }
 }
 
@@ -364,13 +499,33 @@ private fun CaseImeBottomUnderKeyboard(onClose: () -> Unit) {
         },
         bottom = { Preset1Button(text = "Показать все", onClick = dismiss) },
     ) {
-        filtered.forEachIndexed { index, sport ->
-            PresetMenuCell(
-                title = sport,
-                onClick = dismiss,
-                leadingColor = MarkerColors[index % MarkerColors.size],
-            )
-        }
+        SportLazyList(filtered, dismiss)
+    }
+}
+
+// (s) Дефолтный подъём над клавиатурой: bottomKeyboardBehavior = Lift (значение по умолчанию). При фокусе на
+// поиске лист разворачивается в FullScreen и над клавиатурой поднимается ВЕСЬ контент, включая bottom-кнопку —
+// она едет вверх вместе с top+middle и остаётся видимой прямо над клавиатурой. Противоположность кейсу (l),
+// где bottom, наоборот, прижат к нижней кромке листа и уходит ПОД клавиатуру.
+@Composable
+private fun CaseImeBottomAboveKeyboard(onClose: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val state = rememberXBottomSheetState()
+    var query by remember { mutableStateOf("") }
+    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
+    LaunchedEffect(Unit) { state.show() }
+    val filtered = SPORTS.take(50).filter { sport -> sport.contains(query, ignoreCase = true) }
+    XBottomSheet(
+        state = state,
+        onDismissRequest = dismiss,
+        bottomKeyboardBehavior = KeyboardBottomBehavior.Lift,
+        top = {
+            PresetTitle("Вид спорта")
+            PresetSearchField(query = query, onQueryChange = { value -> query = value })
+        },
+        bottom = { Preset1Button(text = "Показать все", onClick = dismiss) },
+    ) {
+        SportLazyList(filtered, dismiss)
     }
 }
 
@@ -410,20 +565,27 @@ private fun CaseStaticGrow(onClose: () -> Unit) {
         dragHandle = DragHandleStyle.Static,
         top = { PresetTitle("Static handle + рост контента") },
     ) {
-        Preset1Button(text = "Добавить 10 элементов (сейчас $itemCount)", onClick = { itemCount += 10 })
-        repeat(itemCount) { index ->
-            PresetMenuCell(
-                title = "Элемент ${index + 1}",
-                onClick = dismiss,
-                leadingColor = MarkerColors[index % MarkerColors.size],
-            )
+        LazyColumn(modifier = Modifier.fillMaxWidth(), state = rememberLazyListState()) {
+            item {
+                Preset1Button(
+                    text = "Добавить 10 элементов (сейчас $itemCount)",
+                    onClick = { itemCount += 10 },
+                )
+            }
+            items(itemCount) { index ->
+                PresetMenuCell(
+                    title = "Элемент ${index + 1}",
+                    onClick = dismiss,
+                    leadingColor = MarkerColors[index % MarkerColors.size],
+                )
+            }
         }
     }
 }
 
-// Карточка Additional Top: ФОН слота (не красим составные части листа — это внешний контент). Фон рисуется
-// всегда (в Collapsed остаётся видимой полоской peek 20dp), а КОНТЕНТ (тексты) уходит в Alpha 0 — раздельно
-// фон/контент, чтобы полоска не была прозрачной. graphicsLayer с alpha — на контент внутри фона.
+// Карточка Additional Top — внешний контент слота (составные части листа не красим). Появление/сворачивание
+// по высоте плавно анимирует сам AdditionalTopStack (visibleFraction); тут дополнительно кросс-фейдим тексты
+// (alpha 0 в Collapsed), чтобы они гасли синхронно с усадкой высоты, а не обрезались резко.
 @Composable
 private fun AdditionalTopCard(collapsed: Boolean) {
     val contentAlpha by animateFloatAsState(
