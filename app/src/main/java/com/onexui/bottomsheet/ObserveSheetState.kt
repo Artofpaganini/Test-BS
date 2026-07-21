@@ -35,9 +35,13 @@ internal fun ObserveSheetState(
                 .collect { launch { state.onContentRemeasured() } }
         }
         launch {
-            snapshotFlow { keyboardState.value }
+            // Ключ — пара (lift, isLoading): при снятии Loading под ОТКРЫТОЙ клавиатурой (keyboardState не менялся)
+            // промоушен переоценивается заново. Иначе фокус в поиске во время Loading → contentReady() выставил
+            // Collapsed при видимой IME → withAdjustmentForKeyboard увёл бы верх листа за статус-бар (нет авто-
+            // FullScreen, т.к. IME-коллектор без этого ключа не переэмитит). onImeShown идемпотентен (гард по стейтам).
+            snapshotFlow { keyboardState.value to state.isLoading }
                 .distinctUntilChanged()
-                .collect { lift ->
+                .collect { (lift, _) ->
                     if (lift.isKeyboardVisible) {
                         state.onImeShown(lift.keyboardHeight.roundToInt(), alwaysFullScreenOnIme)
                     } else {

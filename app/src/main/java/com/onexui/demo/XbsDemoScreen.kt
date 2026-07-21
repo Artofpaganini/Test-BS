@@ -465,7 +465,8 @@ private fun CaseImeSearch(onClose: () -> Unit) {
     var query by remember { mutableStateOf("") }
     val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) { state.show() }
-    val filtered = SPORTS.take(50).filter { sport -> sport.contains(query, ignoreCase = true) }
+    // remember(query) — кэш вычисления (не создание сущности; ключ дискретный): фильтр гоняется при смене query, а не на каждой рекомпозиции.
+    val filtered = remember(query) { SPORTS.take(50).filter { sport -> sport.contains(query, ignoreCase = true) } }
     XBottomSheet(
         state = state,
         onDismissRequest = dismiss,
@@ -489,7 +490,8 @@ private fun CaseImeBottomUnderKeyboard(onClose: () -> Unit) {
     var query by remember { mutableStateOf("") }
     val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) { state.show() }
-    val filtered = SPORTS.take(50).filter { sport -> sport.contains(query, ignoreCase = true) }
+    // remember(query) — кэш вычисления (не создание сущности; ключ дискретный): фильтр гоняется при смене query, а не на каждой рекомпозиции.
+    val filtered = remember(query) { SPORTS.take(50).filter { sport -> sport.contains(query, ignoreCase = true) } }
     XBottomSheet(
         state = state,
         onDismissRequest = dismiss,
@@ -515,7 +517,8 @@ private fun CaseImeBottomAboveKeyboard(onClose: () -> Unit) {
     var query by remember { mutableStateOf("") }
     val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) { state.show() }
-    val filtered = SPORTS.take(50).filter { sport -> sport.contains(query, ignoreCase = true) }
+    // remember(query) — кэш вычисления (не создание сущности; ключ дискретный): фильтр гоняется при смене query, а не на каждой рекомпозиции.
+    val filtered = remember(query) { SPORTS.take(50).filter { sport -> sport.contains(query, ignoreCase = true) } }
     XBottomSheet(
         state = state,
         onDismissRequest = dismiss,

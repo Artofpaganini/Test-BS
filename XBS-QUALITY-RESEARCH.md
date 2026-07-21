@@ -38,7 +38,22 @@
   - Сигнатура: `XBottomSheet(state, onDismissRequest, modifier, config = XBottomSheetConfig.Default, additionalTop, top, bottom, middle)`. Старые скалярные параметры удалены.
   - Атомарная миграция demo: 4 стейт-DSL (r anchors, c/k skipCollapsed, d initialLoading) + 7 конфиг-листа (e overlay, f dragHandle=null, g cornerRadius, l/s keyboard, j dismiss, k dragHandle=Static). alva/zorderlab не используют — проверено. Коллизия имён `dismiss` (локальный val vs DSL-метод) резолвится корректно.
   - Верификация: assembleDebug зелёный; печать в (i) — лист НЕ пересоздаётся/не моргает (config value-equality → стабильный ключ, подтверждено сериями нажатий); (e) без затемнения + тень; (g) скруглённая карточка additionalTop. Доки XBOTTOMSHEET.md (API→DSL) + XBS-SPEC.md §3 (ПЕРЕСМОТРЕНО: DSL-конфиг) обновлены.
-- **ВСЯ ОЧЕРЕДЬ (P0→P1→A/B→P2→P3→P4-DSL) ЗАВЕРШЕНА.** Дальше — полная регрессия 19 кейсов + коммит на стороне team-lead.
+- **LOW-хвосты (8, финальный раунд, апрув юзера)** — DONE (2026-07-21):
+  - L1 updateMetrics: сравнение 4 примитивов ДО аллокации SheetMetrics (горячий путь measure).
+  - L2 AdditionalTop: убран лишний clipToBounds() (clip формы уже режет); shape оставлен инлайн ОСОЗНАННО (не покадровый путь + структурное равенство гасит инвалидацию; remember(cornerRadius){} = запрещённый rule-3 ради нуля).
+  - L3 demo i/l/s: `filtered = remember(query) { … }` — легальный кэш вычисления (не создание сущности), поясн. комментом.
+  - L4 markContentReady: фолбэк после таймаута НЕ принимает лоадерные метрики — ждёт первый инстанс после снятия isLoading (`awaitContentMetrics`, != loaderMetrics). Регресс (d) норм.
+  - L5 Loading+IME: IME-коллектор ключуется парой `keyboardState.value to isLoading` → снятие Loading под открытой клавиатурой переоценивает промоушен (onImeShown идемпотентен).
+  - L6 dragBy: потолок ОБЫЧНОГО драга = верхний rest-якорь (`highestAllowedAnchorPx`, кэш как lowest); выше — только overshoot с сопротивлением (драг за хендл из Collapsed больше не растягивает пустой Surface до потолка). Регресс (b1): held-драг вверх клампится на ExpandedContent без пустого стрейча.
+  - L7 customAnchors: `Log.w` при создании стейта, если заданы якоря (без require — по юзеру). Проверено (r): варнинг в logcat.
+  - L8 onPreFling: если offset уже на rest-якоре (составной жест: лист дорос + скролл списка) — не съедать скорость (`isOffsetAtRestAnchor()` → enqueueSettle(0), return Zero), инерция списка продолжается.
+  - connection-LOW (XBottomSheet.kt:139) — уже закрыт в раунде A/B (single-instance remember(state) + enabledState).
+  - Самопрогон: (r) L7 варнинг + открытие, (b1) L6 клампинг, (d) L4 норм, (i)/typing стабильность (P4-DSL). Сборка зелёная.
+- **БАГ additionalTop (юзер): анимация карточки дёргала контент листа** — FIXED (2026-07-21):
+  - Причина: (1) place-пасс делал `surface = offset − cardVisibleHeight` (surface сжимался/ехал вниз при росте карточки); (2) detect включал cardVisibleHeight → offset догонял фракцию ОТДЕЛЬНОЙ пружиной (коллектор роста), рассинхрон.
+  - Фикс: карточка вынесена из тела листа в ОТДЕЛЬНЫЙ subcompose-слот `AdditionalTopCardSlot` (в корневом SubcomposeLayout). surface ВСЕГДА высотой offset (контент неподвижен); `totalHeight = offset + cardVisibleHeight`, fraction читается в measure того же пасса (deferred, синхронно, без пружины-догонялки); карточка вне detect → offset её не догоняет. AdditionalTopStack + AdditionalTopMeasurePolicy удалены (логика в SubcomposeLayout), остался enum AdditionalTopState. SheetBody больше не знает про additionalTop.
+  - Приёмка (эмулятор): (1) кейс (g) тоггл — «Событие» на y=1650 в ОБОИХ состояниях (контент неподвижен), карточка «Добавить в купон» выезжает/уезжает НАД листом (скрины `baseline/bug_g_expanded.png` / `bug_g_collapsed.png`); (2) конечные высоты — Expanded=контент+карточка, Collapsed=контент (bottom-aligned, карточка сверху); (3) драг листа с карточкой работает (g свайп-вниз закрывает); (4) (a)/(b1) без additionalTop — путь идентичен старому (cardVisibleHeight=0 → totalHeight=offset), рендерятся 1:1.
+- **ВСЯ ОЧЕРЕДЬ (P0→P1→A/B→P2→P3→P4-DSL→LOW-хвосты→additionalTop-баг) ЗАВЕРШЕНА.** Дальше — полная регрессия 19 кейсов + коммит на стороне team-lead.
 
 ---
 

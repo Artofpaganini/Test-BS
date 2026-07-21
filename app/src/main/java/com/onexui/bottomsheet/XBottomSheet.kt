@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -25,6 +27,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
@@ -267,9 +270,6 @@ private fun SheetContainer(
             bottomKeyboardBehavior = bottomKeyboardBehavior,
             navBarPx = insets.navBarPx,
             fillHeight = fillHeight,
-            additionalTopFraction = additionalTopFraction,
-            additionalTopCornerRadius = additionalTopConfig.cornerRadius,
-            additionalTop = additionalTop,
             top = top,
             bottom = bottom,
             middle = middle,
@@ -280,11 +280,29 @@ private fun SheetContainer(
     // пасс и не аллоцирует новые лямбды на кадр драга. Тело композируется один раз на слот. Лямбды НЕ в remember.
     val detectBody: @Composable () -> Unit = { sheetBodySlot(fillHeight = false) }
     val placeBody: @Composable () -> Unit = { sheetBodySlot(fillHeight = true) }
-    // SubcomposeLayout: тело композируется ОДИН раз, меряется ДВАЖДЫ. (1) detect — при ОГРАНИЧЕННОЙ высоте
+    // Карточка Additional Top — ОТДЕЛЬНЫЙ слой НАД листом (кладётся в свой subcompose-слот, вне тела листа):
+    // клип верхних углов + натуральная высота (wrapContentHeight unbounded, прижата к верху). Держим отдельно,
+    // чтобы её протрузия не входила в высоту/детект тела листа и анимация фракции не дёргала контент. Лямбда в
+    // композиции (стабильная идентичность между пассами), НЕ в remember.
+    val additionalTopBody: (@Composable () -> Unit)? = additionalTop?.let { card ->
+        {
+            Box(
+                modifier = Modifier.clip(
+                    RoundedCornerShape(
+                        topStart = additionalTopConfig.cornerRadius,
+                        topEnd = additionalTopConfig.cornerRadius,
+                    ),
+                ),
+            ) {
+                Box(modifier = Modifier.wrapContentHeight(align = Alignment.Top, unbounded = true)) { card() }
+            }
+        }
+    }
+    // SubcomposeLayout: тело листа композируется ОДИН раз, меряется ДВАЖДЫ. (1) detect — при ОГРАНИЧЕННОЙ высоте
     // maxHeight: короткий контент wrap (< maxHeight), скроллируемый/ленивый (LazyColumn и т.п.) fill (== maxHeight).
-    // Это contentHeightPx → режим wrap/fill (см. SheetMetrics.isFillMode). LazyColumn при ограниченной высоте НЕ
-    // крашится и wrap'ится при малом контенте (проверено пробом). (2) place — при fixed(offset): реальная высота
-    // листа (offset может превышать maxHeight на overshoot верхнего якоря → до screenHeightPx).
+    // Это contentHeightPx → режим wrap/fill (см. SheetMetrics.isFillMode). Карточка Additional Top в detect НЕ
+    // входит → offset (высота листа) считается по контенту тела, а НЕ гонится за анимацией фракции. (2) place —
+    // при fixed(offset): реальная высота тела. Карточка — третий слот, кладётся НАД телом (протрузия).
     SubcomposeLayout(
         modifier = modifier
             .then(shadowModifier)
@@ -305,18 +323,38 @@ private fun SheetContainer(
             contentHeightPx = detectHeight,
             loadingSheetHeightPx = insets.loadingSheetHeightPx,
         )
-        val placeHeight = state.offset.value.roundToInt().coerceIn(0, insets.screenHeightPx)
-        val placeable = subcompose(VisibleContentSlot, placeBody).first().measure(
-            Constraints.fixed(width = width, height = placeHeight),
+        val sheetHeight = state.offset.value.roundToInt().coerceIn(0, insets.screenHeightPx)
+        val surfacePlaceable = subcompose(VisibleContentSlot, placeBody).first().measure(
+            Constraints.fixed(width = width, height = sheetHeight),
         )
-        layout(width = width, height = placeHeight) {
-            placeable.place(x = 0, y = 0)
+        // Additional Top — протрузия НАД листом. surface ВСЕГДА высотой sheetHeight (=offset) → контент листа
+        // неподвижен; видимая высота карточки = fraction × (natural − overlap), fraction читается ЗДЕСЬ, в measure
+        // (deferred, без рекомпозиций) — СИНХРОННО с sheetHeight в одном пассе, без догоняющей пружины. Итоговая
+        // высота = sheetHeight + видимая часть карточки; карточка выезжает СВЕРХУ, её низ (overlap) утоплен под
+        // surface (кладётся раньше → surface рисуется поверх, перекрытие корректно по z). Лист bottom-aligned →
+        // низ surface у нижней кромки экрана, карточка растёт вверх.
+        val overlapPx = XBottomSheetDefaults.AdditionalTopOverlap.roundToPx()
+        val cardMeasurable = additionalTopBody?.let { subcompose(AdditionalTopCardSlot, it).firstOrNull() }
+        val cardVisibleHeight = if (cardMeasurable != null) {
+            val cardNatural = cardMeasurable.maxIntrinsicHeight(width)
+            (additionalTopFraction.value.coerceIn(0f, 1f) * (cardNatural - overlapPx).coerceAtLeast(0)).roundToInt()
+        } else {
+            0
+        }
+        val cardPlaceable = cardMeasurable?.measure(
+            Constraints.fixed(width = width, height = cardVisibleHeight + overlapPx),
+        )
+        val totalHeight = sheetHeight + cardVisibleHeight
+        layout(width = width, height = totalHeight) {
+            cardPlaceable?.place(x = 0, y = 0)
+            surfacePlaceable.place(x = 0, y = cardVisibleHeight)
         }
     }
 }
 
 private object ContentMeasureSlot
 private object VisibleContentSlot
+private object AdditionalTopCardSlot
 
 // Тело листа: Surface(20,20,0,0) с top(sticky) / middle(scroll) / bottom(sticky). Основная часть получает
 // фиксированную высоту (от измерителя / AdditionalTopStack), поэтому weight у middle работает без внешнего
@@ -331,9 +369,6 @@ private fun SheetBody(
     bottomKeyboardBehavior: BottomKeyboardBehavior,
     navBarPx: Int,
     fillHeight: Boolean,
-    additionalTopFraction: Animatable<Float, AnimationVector1D>,
-    additionalTopCornerRadius: Dp,
-    additionalTop: (@Composable () -> Unit)?,
     top: (@Composable () -> Unit)?,
     bottom: (@Composable () -> Unit)?,
     middle: @Composable () -> Unit,
@@ -393,18 +428,10 @@ private fun SheetBody(
             // списка работают штатно.
             .pointerInput(Unit) { detectTapGestures {} },
     ) {
-        // Additional Top держим смонтированным всегда (при наличии слота) — видимая высота карточки ПЛАВНО
-        // анимируется через additionalTopFraction (1 = Expanded, 0 = скрыта). Верхние углы карточки — cornerRadius.
-        if (additionalTop != null) {
-            AdditionalTopStack(
-                visibleFraction = additionalTopFraction,
-                cornerRadius = additionalTopCornerRadius,
-                additionalTopContent = additionalTop,
-                sheetContent = sheetSurface,
-            )
-        } else {
-            sheetSurface()
-        }
+        // Тело листа = только Surface (высотой offset). Карточка Additional Top — ОТДЕЛЬНЫЙ слой НАД листом
+        // (SubcomposeLayout, слот AdditionalTopCardSlot): её протрузия не входит в высоту тела → контент листа
+        // не дёргается анимацией фракции. DragHandle — у верхней кромки листа (ниже карточки).
+        sheetSurface()
         if (dragHandle != null) {
             DragHandle(style = dragHandle, modifier = Modifier.align(Alignment.TopCenter))
         }

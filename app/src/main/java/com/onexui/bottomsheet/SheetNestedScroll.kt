@@ -58,6 +58,12 @@ internal class SheetNestedScrollConnection(
         // завершиться, даже если доступность сменилась в момент броска (напр. IME всплыла). Не начатый драг
         // (доступность была false в onPreScroll/onPostScroll) сюда не даёт isDragging=true → вернём Zero.
         if (!state.isDragging) return Velocity.Zero
+        // Составной жест: лист уже дорос до rest-якоря, палец дальше скроллил список → НЕ съедаем скорость, чтобы
+        // инерция списка (fling) продолжилась. settle(0) сбросит isDragging/overshoot, но лист уже на якоре — не двинет.
+        if (state.isOffsetAtRestAnchor()) {
+            state.enqueueSettle(0f)
+            return Velocity.Zero
+        }
         state.enqueueSettle(available.y)
         return available.copy(x = 0f)
     }

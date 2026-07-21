@@ -1,5 +1,6 @@
 package com.onexui.bottomsheet
 
+import android.util.Log
 import androidx.compose.animation.core.Animatable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -50,12 +51,25 @@ internal class XBottomSheetState internal constructor(
 
     private var accumulatedOvershootPx = 0f
 
-    // Кэш нижнего рест-якоря (floor при dismissOnSwipeDown=false): пересчитывается ТОЛЬКО при фактической смене
-    // метрик (updateMetrics), а не на каждом кадре драга. dragBy читает поле вместо аллокации списка кандидатов.
+    // Кэш нижнего/верхнего рест-якоря: пересчитываются ТОЛЬКО при фактической смене метрик (updateMetrics), а не
+    // на каждом кадре драга. lowest — floor при dismissOnSwipeDown=false; highest — потолок обычного драга (выше
+    // только overshoot с сопротивлением). dragBy читает поля вместо аллокации списка кандидатов.
     private var lowestAllowedAnchorPx = 0
+    private var highestAllowedAnchorPx = 0
 
     // Стейт до авто-промоушена в FullScreen из-за клавиатуры (§6): при скрытии IME откатываемся к нему.
     private var imePromotedFrom: SheetValue? = null
+
+    init {
+        // customAnchors работают только в fill-режиме (контент ≥ экрана); в wrap-режиме они не участвуют в settle.
+        // Предупреждаем разработчика логом (по решению юзера — без require).
+        if (customAnchors.isNotEmpty()) {
+            Log.w(
+                "XBottomSheet",
+                "customAnchors работают только в fill-режиме (контент ≥ экрана); в wrap-режиме игнорируются",
+            )
+        }
+    }
 
     val isVisible: Boolean get() = currentValue != SheetValue.Hidden
 
@@ -97,13 +111,19 @@ internal class XBottomSheetState internal constructor(
         }
         val loaderMetrics = metrics
         isLoading = false
+        // openTarget должен считаться по РЕАЛЬНОМУ контенту, а не по 192dp-Loader'у. Ждём первый инстанс метрик
+        // ПОСЛЕ снятия isLoading (новая ссылка != loaderMetrics). На таймаут (measure заморожен — приложение
+        // свёрнуто) НЕ принимаем stale-лоадерные метрики: ждём реальные без ограничения (реанимируются на foreground).
         val measured = withTimeoutOrNull(REMEASURE_TIMEOUT_MS) {
-            snapshotFlow { metrics }.filterNotNull().first { remeasured -> remeasured !== loaderMetrics }
-        } ?: awaitMetrics()
+            awaitContentMetrics(loaderMetrics)
+        } ?: awaitContentMetrics(loaderMetrics)
         // hide() мог прилететь в окно ожидания ре-замера — повторная проверка перед анимацией.
         if (!isVisible) return
         animateTo(measured.openTarget(skipCollapsed))
     }
+
+    private suspend fun awaitContentMetrics(loaderMetrics: SheetMetrics?): SheetMetrics =
+        snapshotFlow { metrics }.filterNotNull().first { remeasured -> remeasured !== loaderMetrics }
 
     // Контент изменился (подгрузка/рост): высота следует за текущим якорем. В wrap+skipCollapsed+Content, если
     // контент заполнил экран — авто FullScreen. В Loading — no-op (высоту ведут show/markContentReady).
@@ -153,6 +173,18 @@ internal class XBottomSheetState internal constructor(
         contentHeightPx: Int,
         loadingSheetHeightPx: Int,
     ) {
+        // Сравнение примитивов ДО аллокации SheetMetrics: updateMetrics зовётся из measure-лямбды на КАЖДОМ пассе
+        // (кадре драга/settle), а меняются лишь эти 4 величины (peekFraction/customAnchors — константы конструктора).
+        // Без ранней проверки — новый data-class + equals на каждый кадр только чтобы понять «ничего не изменилось».
+        val current = metrics
+        if (current != null &&
+            current.screenHeightPx == screenHeightPx &&
+            current.statusBarPx == statusBarPx &&
+            current.contentHeightPx == contentHeightPx &&
+            current.loadingSheetHeightPx == loadingSheetHeightPx
+        ) {
+            return
+        }
         val updated = SheetMetrics(
             screenHeightPx = screenHeightPx,
             statusBarPx = statusBarPx,
@@ -161,14 +193,13 @@ internal class XBottomSheetState internal constructor(
             peekFraction = peekFraction,
             customAnchors = customAnchors,
         )
-        if (updated != metrics) {
-            metrics = updated
-            lowestAllowedAnchorPx = computeLowestAllowedAnchorPx(updated)
-        }
+        metrics = updated
+        lowestAllowedAnchorPx = computeLowestAllowedAnchorPx(updated)
+        highestAllowedAnchorPx = computeHighestAllowedAnchorPx(updated)
     }
 
     // Нижний рест-якорь (наименьшая px-высота среди рест-стейтов, без Hidden) — прямой min-перебор веток режима
-    // без списка/Pair/distinctBy/sortedBy. Семантика 1:1 с settleCandidates(dismissOnSwipeDown=false).firstOrNull().
+    // без списка/Pair/distinctBy/sortedBy. Семантика 1:1 с buildSettleCandidates(dismissOnSwipeDown=false).first().
     private fun computeLowestAllowedAnchorPx(measured: SheetMetrics): Int = when {
         measured.isFillMode -> {
             var lowest = measured.maxHeightPx
@@ -179,6 +210,16 @@ internal class XBottomSheetState internal constructor(
         skipCollapsed -> measured.anchorPx(SheetValue.Content, skipCollapsed = true)
         measured.contentHeightPx <= measured.peekPx -> measured.anchorPx(SheetValue.Content, skipCollapsed = false)
         else -> measured.peekPx
+    }
+
+    // Верхний рест-якорь (наибольшая px-высота среди рест-стейтов) — потолок ОБЫЧНОГО драга: выше него лист не
+    // тянется свободно, только overshoot-ветка с сопротивлением. fill → ExpandedFullScreen (maxHeightPx);
+    // wrap → Content/ExpandedContent по контенту.
+    private fun computeHighestAllowedAnchorPx(measured: SheetMetrics): Int = when {
+        measured.isFillMode -> measured.maxHeightPx
+        skipCollapsed -> measured.anchorPx(SheetValue.Content, skipCollapsed = true)
+        measured.contentHeightPx <= measured.peekPx -> measured.anchorPx(SheetValue.Content, skipCollapsed = false)
+        else -> measured.anchorPx(measured.expandTarget(), skipCollapsed = false)
     }
 
     // Команды жестов сериализуются через ОДИН FIFO-канал (см. processGestures) — иначе независимые
@@ -220,30 +261,29 @@ internal class XBottomSheetState internal constructor(
         }
     }
 
-    // Живой драг: двигаем высоту, с сопротивлением на overshoot над верхним якорем (iOS-растягивание).
-    // wrap: overshoot над Content/ExpandedContent тянет к потолку. fill: overshoot над ExpandedFullScreen
-    // (верхний якорь) уводит выше потолка с сопротивлением (rubber-band в зону статус-бара), spring назад.
+    // Живой драг: двигаем высоту, с сопротивлением на overshoot над ВЕРХНИМ rest-якорем (iOS-растягивание).
+    // Обычный драг ограничен сверху верхним rest-якорем (симметрично floor снизу): драг за хендл из Collapsed
+    // больше НЕ растягивает пустой Surface до потолка — упирается в ExpandedContent, дальше только с сопротивлением.
+    // wrap: overshoot над верхним rest-якорем тянет к потолку. fill/FullScreen: overshoot над maxHeight — rubber-band
+    // в зону статус-бара, spring назад.
     private suspend fun dragBy(deltaHeightPx: Float) {
         val measured = metrics ?: return
-        val anchor = measured.anchorPx(currentValue, skipCollapsed).toFloat()
         val floorPx = if (dismissOnSwipeDown) 0f else lowestAllowedAnchorPx.toFloat()
         val atTop = currentValue == SheetValue.ExpandedFullScreen
-        val resistanceState = currentValue == SheetValue.Content ||
-            currentValue == SheetValue.ExpandedContent || atTop
-        val overshootCeiling = if (atTop) {
-            (measured.maxHeightPx + RESISTANCE_MAX_PX)
-        } else {
-            measured.maxHeightPx.toFloat()
-        }
-        val inOvershoot = resistanceState &&
-            (accumulatedOvershootPx > 0f || (offset.value >= anchor - OVERSHOOT_ENTER_EPS_PX && deltaHeightPx > 0f))
+        // База сопротивления и потолок обычного драга. atTop — база maxHeight, rubber-band в зону статус-бара;
+        // иначе — ВЕРХНИЙ rest-якорь (обычный драг стоп на нём, overshoot тянет с сопротивлением к maxHeight).
+        val overshootBase = if (atTop) measured.maxHeightPx.toFloat() else highestAllowedAnchorPx.toFloat()
+        val overshootCeiling = if (atTop) (measured.maxHeightPx + RESISTANCE_MAX_PX) else measured.maxHeightPx.toFloat()
+        // Сопротивление — когда лист у/над верхним rest-якорем (не по currentValue): включает и драг из Collapsed.
+        val inOvershoot = accumulatedOvershootPx > 0f ||
+            (offset.value >= overshootBase - OVERSHOOT_ENTER_EPS_PX && deltaHeightPx > 0f)
         if (inOvershoot) {
             accumulatedOvershootPx = (accumulatedOvershootPx + deltaHeightPx).coerceAtLeast(0f)
             val resisted = resistedOvershoot(accumulatedOvershootPx, RESISTANCE_MAX_PX)
-            offset.snapTo((anchor + resisted).coerceAtMost(overshootCeiling))
+            offset.snapTo((overshootBase + resisted).coerceAtMost(overshootCeiling))
         } else {
             accumulatedOvershootPx = 0f
-            offset.snapTo((offset.value + deltaHeightPx).coerceIn(floorPx, measured.maxHeightPx.toFloat()))
+            offset.snapTo((offset.value + deltaHeightPx).coerceIn(floorPx, overshootBase))
         }
     }
 
@@ -297,6 +337,16 @@ internal class XBottomSheetState internal constructor(
         }
         if (dismissOnSwipeDown) list.add(AnchorCandidate(SheetValue.Hidden, 0))
         return list.distinctBy { candidate -> candidate.anchorPx }.sortedBy { candidate -> candidate.anchorPx }
+    }
+
+    // Лист СТОИТ на одном из rest-якорей? Нужно onPreFling: если во время составного жеста лист уже дорос до якоря
+    // и палец продолжил скроллить список — не съедать инерцию списка (см. SheetNestedScrollConnection.onPreFling).
+    internal fun isOffsetAtRestAnchor(): Boolean {
+        val measured = metrics ?: return false
+        val current = offset.value
+        return buildSettleCandidates(measured, dismissOnSwipeDown).any { candidate ->
+            candidate.value != SheetValue.Hidden && abs(candidate.anchorPx - current) < ANCHOR_EPS
+        }
     }
 
     private suspend fun animateTo(target: SheetValue) {
