@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import com.onexui.bottomsheet.NativeSheetSpring
+import com.onexui.bottomsheet.XBottomSheetDefaults
 import com.onexui.bottomsheet.additionaltop.AdditionalTopState
 import com.onexui.bottomsheet.gesture.resistedOvershoot
 import kotlinx.coroutines.Job
@@ -18,7 +19,6 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.math.abs
 import kotlin.time.Duration.Companion.milliseconds
 
 // Стейт-машина высоты листа. Compose-state (mutableStateOf), не StateFlow. Стейт вычисляется по метрикам и
@@ -50,10 +50,8 @@ internal class XBottomSheetState internal constructor(
 
     private var accumulatedOvershootPx = 0f
 
-    // Кэш рест-якорей (пересчёт только в updateMetrics): lowest — floor при dismissOnSwipeDown=false;
-    // highest — потолок обычного драга (выше — только overshoot с сопротивлением).
-    private var lowestAllowedAnchorPx = 0
-    private var highestAllowedAnchorPx = 0
+    // Якорная таблица (rest-якоря + settle-математика), пересчёт только в updateMetrics. null — пока нет метрик.
+    private var anchorTable: SheetAnchorTable? = null
 
     // Стейт до авто-промоушена в FullScreen из-за клавиатуры: при скрытии IME откатываемся к нему.
     private var imePromotedFrom: SheetValue? = null
@@ -68,6 +66,9 @@ internal class XBottomSheetState internal constructor(
     }
 
     val isVisible: Boolean get() = currentValue != SheetValue.Hidden
+
+    // Аддитивный факт бегущей анимации высоты (snapshot-state offset.isRunning; наблюдаемо из snapshotFlow).
+    val isAnimating: Boolean get() = offset.isRunning
 
     private suspend fun awaitMetrics(): SheetMetrics =
         metrics ?: snapshotFlow { metrics }.filterNotNull().first()
@@ -186,29 +187,7 @@ internal class XBottomSheetState internal constructor(
             customAnchors = customAnchors,
         )
         metrics = updated
-        lowestAllowedAnchorPx = computeLowestAllowedAnchorPx(updated)
-        highestAllowedAnchorPx = computeHighestAllowedAnchorPx(updated)
-    }
-
-    // Нижний рест-якорь (минимальная высота среди рест-стейтов, без Hidden) — floor при dismissOnSwipeDown=false.
-    private fun computeLowestAllowedAnchorPx(measured: SheetMetrics): Int = when {
-        measured.isFillMode -> {
-            var lowest = measured.maxHeightPx
-            if (!skipCollapsed) lowest = minOf(lowest, measured.peekPx)
-            measured.customAnchors.forEach { anchor -> lowest = minOf(lowest, measured.customAnchorPx(anchor.key)) }
-            lowest
-        }
-        skipCollapsed -> measured.anchorPx(SheetValue.Content, skipCollapsed = true)
-        measured.contentHeightPx <= measured.peekPx -> measured.anchorPx(SheetValue.Content, skipCollapsed = false)
-        else -> measured.peekPx
-    }
-
-    // Верхний рест-якорь — потолок обычного драга: выше только overshoot с сопротивлением.
-    private fun computeHighestAllowedAnchorPx(measured: SheetMetrics): Int = when {
-        measured.isFillMode -> measured.maxHeightPx
-        skipCollapsed -> measured.anchorPx(SheetValue.Content, skipCollapsed = true)
-        measured.contentHeightPx <= measured.peekPx -> measured.anchorPx(SheetValue.Content, skipCollapsed = false)
-        else -> measured.anchorPx(measured.expandTarget(), skipCollapsed = false)
+        anchorTable = updated.toAnchorTable(skipCollapsed)
     }
 
     private val gestureCommands = Channel<GestureCommand>(Channel.UNLIMITED)
@@ -248,17 +227,19 @@ internal class XBottomSheetState internal constructor(
     // ним — с сопротивлением (wrap → к потолку; fill/FullScreen → rubber-band в зону статус-бара, spring назад).
     private suspend fun dragBy(deltaHeightPx: Float) {
         val measured = metrics ?: return
-        val floorPx = if (dismissOnSwipeDown) 0f else lowestAllowedAnchorPx.toFloat()
+        val table = anchorTable ?: return
+        val floorPx = if (dismissOnSwipeDown) 0f else table.lowestRestAnchorPx.toFloat()
         val atTop = currentValue == SheetValue.ExpandedFullScreen
         // atTop — база maxHeight (rubber-band в статус-бар); иначе — верхний rest-якорь (overshoot тянет к maxHeight).
-        val overshootBase = if (atTop) measured.maxHeightPx.toFloat() else highestAllowedAnchorPx.toFloat()
-        val overshootCeiling = if (atTop) (measured.maxHeightPx + RESISTANCE_MAX_PX) else measured.maxHeightPx.toFloat()
+        val overshootBase = if (atTop) measured.maxHeightPx.toFloat() else table.highestRestAnchorPx.toFloat()
+        val overshootCeiling =
+            if (atTop) (measured.maxHeightPx + XBottomSheetDefaults.ResistanceMaxPx) else measured.maxHeightPx.toFloat()
         // Overshoot — когда лист у/над верхним rest-якорем (не по currentValue): включает и драг из Collapsed.
         val inOvershoot = accumulatedOvershootPx > 0f ||
             (offset.value >= overshootBase - OVERSHOOT_ENTER_EPS_PX && deltaHeightPx > 0f)
         if (inOvershoot) {
             accumulatedOvershootPx = (accumulatedOvershootPx + deltaHeightPx).coerceAtLeast(0f)
-            val resisted = resistedOvershoot(accumulatedOvershootPx, RESISTANCE_MAX_PX)
+            val resisted = resistedOvershoot(accumulatedOvershootPx, XBottomSheetDefaults.ResistanceMaxPx)
             offset.snapTo((overshootBase + resisted).coerceAtMost(overshootCeiling))
         } else {
             accumulatedOvershootPx = 0f
@@ -266,65 +247,22 @@ internal class XBottomSheetState internal constructor(
         }
     }
 
-    // Settle: по скорости и ближайшему якорю; Hidden → свайп-закрытие (если dismissOnSwipeDown).
+    // Settle: по скорости/ближайшему якорю из таблицы; Hidden → свайп-закрытие (если dismissOnSwipeDown).
     private suspend fun settle(velocity: Float) {
         isDragging = false
         accumulatedOvershootPx = 0f
         imePromotedFrom = null
-        val measured = metrics ?: return
-        val candidates = buildSettleCandidates(measured, dismissOnSwipeDown)
-        if (candidates.isEmpty()) {
-            animateTo(currentValue)
-            return
-        }
-        val current = offset.value
-        val chosen = when {
-            velocity < -FLING_VELOCITY_THRESHOLD ->
-                candidates.firstOrNull { candidate -> candidate.anchorPx > current + ANCHOR_EPS } ?: candidates.last()
-            velocity > FLING_VELOCITY_THRESHOLD ->
-                candidates.lastOrNull { candidate -> candidate.anchorPx < current - ANCHOR_EPS } ?: candidates.first()
-            else ->
-                candidates.minByOrNull { candidate -> abs(candidate.anchorPx - current) } ?: candidates.first()
-        }
-        if (chosen.value == SheetValue.Hidden) onDismissRequest() else animateTo(chosen.value)
-    }
-
-    // Якоря доступных стейтов, отсортированные по высоте. Hidden — если разрешён свайп-close.
-    private fun buildSettleCandidates(
-        measured: SheetMetrics,
-        dismissOnSwipeDown: Boolean,
-    ): List<AnchorCandidate> {
-        val list = mutableListOf<AnchorCandidate>()
+        val table = anchorTable ?: return
+        val target = table.settleTarget(offset.value, velocity, dismissOnSwipeDown)
         when {
-            measured.isFillMode -> {
-                if (!skipCollapsed) list.add(AnchorCandidate(SheetValue.Collapsed, measured.peekPx))
-                list.add(AnchorCandidate(SheetValue.ExpandedFullScreen, measured.maxHeightPx))
-                measured.customAnchors.forEach { anchor ->
-                    list.add(AnchorCandidate(SheetValue.Custom(anchor.key), measured.customAnchorPx(anchor.key)))
-                }
-            }
-            skipCollapsed ->
-                list.add(AnchorCandidate(SheetValue.Content, measured.anchorPx(SheetValue.Content, skipCollapsed = true)))
-            measured.contentHeightPx <= measured.peekPx ->
-                list.add(AnchorCandidate(SheetValue.Content, measured.anchorPx(SheetValue.Content, skipCollapsed = false)))
-            else -> {
-                list.add(AnchorCandidate(SheetValue.Collapsed, measured.peekPx))
-                val expanded = measured.expandTarget()
-                list.add(AnchorCandidate(expanded, measured.anchorPx(expanded, skipCollapsed = false)))
-            }
+            target == null -> animateTo(currentValue)
+            target == SheetValue.Hidden -> onDismissRequest()
+            else -> animateTo(target)
         }
-        if (dismissOnSwipeDown) list.add(AnchorCandidate(SheetValue.Hidden, 0))
-        return list.distinctBy { candidate -> candidate.anchorPx }.sortedBy { candidate -> candidate.anchorPx }
     }
 
     // Лист стоит на rest-якоре? onPreFling не съедает инерцию списка, если лист уже дорос до якоря.
-    internal fun isOffsetAtRestAnchor(): Boolean {
-        val measured = metrics ?: return false
-        val current = offset.value
-        return buildSettleCandidates(measured, dismissOnSwipeDown).any { candidate ->
-            candidate.value != SheetValue.Hidden && abs(candidate.anchorPx - current) < ANCHOR_EPS
-        }
-    }
+    internal fun isOffsetAtRestAnchor(): Boolean = anchorTable?.isAtRestAnchor(offset.value) ?: false
 
     private suspend fun animateTo(target: SheetValue) {
         currentValue = target
@@ -333,13 +271,8 @@ internal class XBottomSheetState internal constructor(
     }
 
     private companion object {
-        const val FLING_VELOCITY_THRESHOLD = 400f
-        const val RESISTANCE_MAX_PX = 240f
-        const val ANCHOR_EPS = 1f
         const val REMEASURE_TIMEOUT_MS = 500L
         // Допуск «у верхнего якоря» — гасит float-дрожание на границе перед началом сопротивления.
         const val OVERSHOOT_ENTER_EPS_PX = 0.5f
     }
 }
-
-private data class AnchorCandidate(val value: SheetValue, val anchorPx: Int)

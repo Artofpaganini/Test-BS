@@ -10,11 +10,12 @@ import androidx.compose.runtime.State
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.unit.Constraints
 import com.onexui.bottomsheet.XBottomSheetDefaults
-import com.onexui.bottomsheet.additionaltop.AdditionalTopConfig
+import com.onexui.bottomsheet.config.AdditionalTopConfig
 import com.onexui.bottomsheet.config.BottomKeyboardBehavior
 import com.onexui.bottomsheet.gesture.SheetNestedScrollConnection
 import com.onexui.bottomsheet.gesture.sheetDrag
@@ -32,6 +33,9 @@ internal fun SheetContainer(
     insets: SheetInsets,
     overlayBackground: Boolean,
     dragHandle: DragHandleStyle?,
+    sheetBackgroundColor: Color,
+    handleThemeColor: Color,
+    handleStaticColor: Color,
     interactionsEnabled: Boolean,
     nestedScrollConnection: SheetNestedScrollConnection,
     keyboardState: State<KeyboardLiftState>,
@@ -58,6 +62,9 @@ internal fun SheetContainer(
         SheetBody(
             state = state,
             dragHandle = dragHandle,
+            sheetBackgroundColor = sheetBackgroundColor,
+            handleThemeColor = handleThemeColor,
+            handleStaticColor = handleStaticColor,
             keyboardState = keyboardState,
             isFullScreen = isFullScreen,
             bottomKeyboardBehavior = bottomKeyboardBehavior,

@@ -6,8 +6,8 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import com.onexui.bottomsheet.XBottomSheetDefaults
 import com.onexui.bottomsheet.state.XBottomSheetState
 
 // Полноэкранный scrim: тачи под листом гасятся ВСЕГДА (hit-таргет), затемнение опционально. Тап вне листа →
@@ -17,6 +17,7 @@ import com.onexui.bottomsheet.state.XBottomSheetState
 internal fun BoxScope.SheetScrim(
     state: XBottomSheetState,
     overlayBackground: Boolean,
+    scrimColor: Color,
     dismissOnOutsideTap: Boolean,
     scrimFadeDistancePx: Float,
     onDismissRequest: () -> Unit,
@@ -32,7 +33,7 @@ internal fun BoxScope.SheetScrim(
             .drawBehind {
                 if (overlayBackground) {
                     val fade = (state.offset.value / scrimFadeDistancePx).coerceIn(0f, 1f)
-                    drawRect(color = XBottomSheetDefaults.ScrimColor, alpha = fade)
+                    drawRect(color = scrimColor, alpha = fade)
                 }
             },
     )

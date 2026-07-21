@@ -1,18 +1,21 @@
 package com.onexui.bottomsheet.config
 
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import com.onexui.bottomsheet.handle.DragHandleStyle
 
 @XBottomSheetDsl
 internal class XBottomSheetConfigBuilder {
     var overlayBackground: Boolean = true
     var dragHandle: DragHandleStyle? = DragHandleStyle.Theme
-    var additionalTopCornerRadius: Dp = 0.dp
+    private val additionalTopBuilder = AdditionalTopConfigBuilder()
     private val dismissBuilder = DismissConfigBuilder()
     private val keyboardBuilder = KeyboardConfigBuilder()
+    private val colorsBuilder = XBottomSheetColorsBuilder()
 
     // Повторные вызовы мёржатся (last-write-wins): переиспользуем один билдер группы.
+    fun additionalTop(configure: AdditionalTopConfigBuilder.() -> Unit) {
+        additionalTopBuilder.configure()
+    }
+
     fun dismiss(configure: DismissConfigBuilder.() -> Unit) {
         dismissBuilder.configure()
     }
@@ -21,11 +24,16 @@ internal class XBottomSheetConfigBuilder {
         keyboardBuilder.configure()
     }
 
+    fun colors(configure: XBottomSheetColorsBuilder.() -> Unit) {
+        colorsBuilder.configure()
+    }
+
     internal fun build(): XBottomSheetConfig = XBottomSheetConfig(
         overlayBackground = overlayBackground,
         dragHandle = dragHandle,
-        additionalTopCornerRadius = additionalTopCornerRadius,
+        additionalTop = additionalTopBuilder.build(),
         dismiss = dismissBuilder.build(),
         keyboard = keyboardBuilder.build(),
+        colors = colorsBuilder.build(),
     )
 }

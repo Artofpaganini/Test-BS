@@ -35,4 +35,9 @@ internal object XBottomSheetDefaults {
 
     val HandleTheme: Color
         @Composable get() = XTheme.colors.separator
+
+    // Вшитая физика жестов (§9, НЕ публичный конфиг; менять только с полным прогоном 21 кейса). px намеренно —
+    // перевод в dp менял бы поведение на не-базовой плотности.
+    const val FlingVelocityThresholdPxPerSec = 400f
+    const val ResistanceMaxPx = 240f
 }

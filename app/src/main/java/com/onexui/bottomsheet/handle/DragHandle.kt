@@ -7,17 +7,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import com.onexui.bottomsheet.XBottomSheetDefaults
 
 // Read-only маркер, позиционируется вызывающим (align TopCenter), вёрстку не двигает.
 @Composable
 internal fun DragHandle(
     style: DragHandleStyle,
+    themeColor: Color,
+    staticColor: Color,
     modifier: Modifier = Modifier,
 ) {
     val color = when (style) {
-        DragHandleStyle.Theme -> XBottomSheetDefaults.HandleTheme
-        DragHandleStyle.Static -> XBottomSheetDefaults.HandleStatic
+        DragHandleStyle.Theme -> themeColor
+        DragHandleStyle.Static -> staticColor
     }
     Box(
         modifier = modifier

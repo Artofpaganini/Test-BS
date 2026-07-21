@@ -86,6 +86,21 @@ fun rememberXBottomSheetState(
 предыдущий при открытии нового). Слоты зеркалят Figma: x/Additional Top, x/Top, x/Bottom, x/Middle.
 Отсутствие слота = выключенная секция. `dragHandle = null` ⇒ полностью отключено взаимодействие с высотой.
 
+### ПЕРЕСМОТРЕНО (config-раунд): конфиг-движимая поверхность
+
+Реализован `XBS-CONFIG-DESIGN.md` (+ поправки юзера). Изменения контракта §3:
+- `onDismissRequest: suspend () -> Unit` (было `() -> Unit`); компонент зовёт её через свой scope. Call-site —
+  `onDismissRequest = { state.hide() }`.
+- Слоты `additionalTop/top/bottom/middle` — receiver `XBottomSheetScope` (`sheetValue` · `isFillMode` ·
+  `var additionalTopState` · `requestDismiss()` · `hideKeyboard()`). Команды высоты остаются у хоста.
+- `XBottomSheetConfig` += `colors` (`XBottomSheetColors`, `Unspecified`→дефолт), `dismiss.onBackPress` (дефолт
+  false); `additionalTopCornerRadius` → группа `additionalTop { cornerRadius }`.
+- `rememberXBottomSheetState`: anchors DSL — infix `"half" at 0.5f` (форма `anchor(key, fraction)` удалена).
+- `state.isAnimating` (read-only факт бегущей анимации). Feel-токены жестов (`FlingVelocityThresholdPxPerSec`/
+  `ResistanceMaxPx`) → `XBottomSheetDefaults` (вшито, НЕ конфиг).
+- Внутреннее: якорная математика → `SheetAnchorTable`. `XBottomSheetStateConfig` НЕ изменён — ключ `rememberSaveable`
+  байт-идентичен, стейт не пересоздаётся.
+
 ## 4. Стейт-машина и якоря
 
 ```kotlin

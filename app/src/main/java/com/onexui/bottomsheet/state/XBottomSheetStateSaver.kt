@@ -3,6 +3,10 @@ package com.onexui.bottomsheet.state
 import androidx.compose.runtime.saveable.Saver
 import com.onexui.bottomsheet.additionaltop.AdditionalTopState
 
+// Saver-контракт (инвариант process-death): append-only список [tag, isLoading, additionalTopName, …новое в конец];
+// чтение getOrNull(i) as? T ?: default (forward-tolerance); tag-freeze (h/c/col/ec/efs/l/cu: — персистентные теги,
+// ре-неймы SheetValue их НЕ меняют); config НЕ сохраняется (пересоздаётся DSL; Custom(key) при удалённом якоре
+// деградирует к peekFraction). В этом раунде не меняется — XBottomSheetStateConfig не растёт.
 internal fun xBottomSheetStateSaver(config: XBottomSheetStateConfig): Saver<XBottomSheetState, List<Any>> = Saver(
     save = { state ->
         listOf(sheetValueTag(state.currentValue), state.isLoading, state.additionalTopState.name)

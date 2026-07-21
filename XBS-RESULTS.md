@@ -156,3 +156,16 @@ L8 инерция списка не гасится после составног
 листом, высота синхронна во внутреннем measure-пассе (без догоняющей пружины). Приёмка: «Событие»
 y=1650 неподвижен во всех состояниях тоггла (пиксель-в-пиксель), конечные высоты 1:1, драг жив.
 Ресерч закрыт полностью: 53/53 находок (исполнено/осознанно отклонено с фиксацией).
+
+## Раунд 10 (2026-07-21) — конфиг-движимая архитектура (XBS-CONFIG-DESIGN, A–K + 3 поправки юзера)
+
+Команда: workflow 4 дизайн-линзы → архитектор (XBS-CONFIG-DESIGN.md) → исполнитель (M0–M4) → параллельное
+ревью (crit 0 / major 0 / minor 1 — исправлен). Реализовано: colors{} (дефолты Unspecified→спека/тема, резолв
+в корне) · additionalTop{} · dismiss.onBackPress (дефолт false) · XBottomSheetScope (receiver 4 слотов:
+sheetValue/isFillMode/additionalTopState/requestDismiss/hideKeyboard; offset/metrics скрыты) · SheetAnchorTable
+(class+extension, порт 1:1 сверен построчно) · anchors infix "half" at 0.5f · isAnimating · feel-токены→Defaults ·
+K-контракт проводки. Поправки юзера: onDismissRequest = suspend-лямбда ({ state.hide() } без scope.launch);
+rememberXBottomSheetConfig{} (remember без ключей); никаких object/companion в новых сущностях.
+Новые кейсы: (t) AdditionalTop+wrap (открытие по контенту ✓), (u) Loading+IME (авто-FullScreen после
+markContentReady под клавиатурой ✓). Регрессия: a/t/u/j via claude-in-mobile (screen.capture MCP — MIME-баг,
+скрины adb-фоллбеком), StateConfig/Saver не изменены (ключ байт-идентичен). Итого 21 demo-кейс.

@@ -6,4 +6,5 @@ import androidx.compose.runtime.Immutable
 internal data class DismissConfig(
     val onOutsideTap: Boolean,
     val onSwipeDown: Boolean,
+    val onBackPress: Boolean,
 )

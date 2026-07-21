@@ -37,7 +37,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -46,9 +45,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.onexui.bottomsheet.NativeSheetSpring
 import com.onexui.bottomsheet.XBottomSheet
+import com.onexui.bottomsheet.XBottomSheetScope
 import com.onexui.bottomsheet.additionaltop.AdditionalTopState
 import com.onexui.bottomsheet.config.BottomKeyboardBehavior
-import com.onexui.bottomsheet.config.xBottomSheetConfig
+import com.onexui.bottomsheet.config.rememberXBottomSheetConfig
 import com.onexui.bottomsheet.handle.DragHandleStyle
 import com.onexui.bottomsheet.presets.PresetBodyText
 import com.onexui.bottomsheet.presets.PresetMenuCell
@@ -57,7 +57,6 @@ import com.onexui.bottomsheet.presets.PresetSingleButton
 import com.onexui.bottomsheet.presets.PresetTitle
 import com.onexui.bottomsheet.state.rememberXBottomSheetState
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 // Тема Compose-слоя demo (отдельная от View-темы Activity): XBottomSheet и пресеты читают MaterialTheme.
 @Composable
@@ -66,8 +65,8 @@ internal fun XbsDemoTheme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = colorScheme, content = content)
 }
 
-// Кейсы матрицы состояний (§4). Один активный кейс = один XBottomSheet на экран: открытие нового кейса
-// закрывает предыдущий (при открытом листе scrim перекрывает кнопки — второй кейс запускается после закрытия).
+// Кейсы матрицы состояний. Один активный кейс = один XBottomSheet на экран: открытие нового кейса закрывает
+// предыдущий (при открытом листе scrim перекрывает кнопки — второй кейс запускается после закрытия).
 private enum class DemoCase(val label: String) {
     A("(a) Content — выход из аккаунта"),
     B1("(b1) Expand → ExpandedContent (средний список)"),
@@ -88,6 +87,8 @@ private enum class DemoCase(val label: String) {
     P("(p) Контент: Column + verticalScroll"),
     Q("(q) Контент: LazyColumn + вложенный LazyColumn"),
     R("(r) Кастомный якорь 50% (свайп: peek → 50% → full)"),
+    T("(t) AdditionalTop + короткий контент (wrap)"),
+    U("(u) Loading + поиск: IME во время Loading"),
 }
 
 private val SPORTS: List<String> = listOf(
@@ -106,13 +107,14 @@ private val MarkerColors: List<Color> = listOf(
 )
 
 // LazyColumn сам скроллит. fillMaxWidth (не fillMaxSize): высота wrap'ится → мало айтемов wrap-режим, много fill.
+// Клик по строке закрывает лист через scope (requestDismiss), поэтому это extension XBottomSheetScope.
 @Composable
-private fun SportLazyList(sports: List<String>, onClick: () -> Unit) {
+private fun XBottomSheetScope.SportLazyList(sports: List<String>) {
     LazyColumn(modifier = Modifier.fillMaxWidth(), state = rememberLazyListState()) {
         itemsIndexed(sports) { index, sport ->
             PresetMenuCell(
                 title = sport,
-                onClick = onClick,
+                onClick = { requestDismiss() },
                 leadingColor = MarkerColors[index % MarkerColors.size],
             )
         }
@@ -183,6 +185,8 @@ private fun XbsCaseHost(case: DemoCase, onClose: () -> Unit) {
         DemoCase.P -> CaseVerticalScroll(onClose)
         DemoCase.Q -> CaseNestedLazyColumn(onClose)
         DemoCase.R -> CaseCustomAnchor(onClose)
+        DemoCase.T -> CaseAdditionalTopWrap(onClose)
+        DemoCase.U -> CaseLoadingImeSearch(onClose)
     }
 }
 
@@ -190,25 +194,29 @@ private fun XbsCaseHost(case: DemoCase, onClose: () -> Unit) {
 // останавливается на ближайшем из якорей: peek(2/3) / 50% / full. Разраб задаёт свои через customAnchors.
 @Composable
 private fun CaseCustomAnchor(onClose: () -> Unit) {
-    val scope = rememberCoroutineScope()
-    val state = rememberXBottomSheetState { anchors { anchor("half", 0.5f) } }
-    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
+    val state = rememberXBottomSheetState { anchors { "half" at 0.5f } }
     LaunchedEffect(Unit) { state.show() }
-    XBottomSheet(state = state, onDismissRequest = dismiss, top = { PresetTitle("Кастомный якорь 50%") }) {
-        SportLazyList(SPORTS, dismiss)
+    XBottomSheet(
+        state = state,
+        onDismissRequest = { state.hide(); onClose() },
+        top = { PresetTitle("Кастомный якорь 50%") },
+    ) {
+        SportLazyList(SPORTS)
     }
 }
 
 // (m) Контент = LazyVerticalGrid: сетка заполняет доступную высоту → fill-режим (Collapsed peek / Expanded).
 @Composable
 private fun CaseGrid(onClose: () -> Unit) {
-    val scope = rememberCoroutineScope()
     val state = rememberXBottomSheetState()
-    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) { state.show() }
-    XBottomSheet(state = state, onDismissRequest = dismiss, top = { PresetTitle("Сетка (LazyVerticalGrid)") }) {
+    XBottomSheet(
+        state = state,
+        onDismissRequest = { state.hide(); onClose() },
+        top = { PresetTitle("Сетка (LazyVerticalGrid)") },
+    ) {
         LazyVerticalGrid(columns = GridCells.Fixed(2), modifier = Modifier.fillMaxWidth()) {
-            gridItems(SPORTS) { sport -> PresetMenuCell(title = sport, onClick = dismiss) }
+            gridItems(SPORTS) { sport -> PresetMenuCell(title = sport, onClick = { requestDismiss() }) }
         }
     }
 }
@@ -216,11 +224,13 @@ private fun CaseGrid(onClose: () -> Unit) {
 // (n) Контент = LazyRow (горизонтальный, короткий по высоте) → wrap-режим: лист по высоте контента.
 @Composable
 private fun CaseLazyRow(onClose: () -> Unit) {
-    val scope = rememberCoroutineScope()
     val state = rememberXBottomSheetState()
-    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) { state.show() }
-    XBottomSheet(state = state, onDismissRequest = dismiss, top = { PresetTitle("Горизонтальный (LazyRow)") }) {
+    XBottomSheet(
+        state = state,
+        onDismissRequest = { state.hide(); onClose() },
+        top = { PresetTitle("Горизонтальный (LazyRow)") },
+    ) {
         LazyRow(modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp)) {
             items(SPORTS) { sport ->
                 Box(
@@ -239,11 +249,13 @@ private fun CaseLazyRow(onClose: () -> Unit) {
 // Вертикальный скролл листа и горизонтальный скролл каруселей не конфликтуют (разные оси).
 @Composable
 private fun CaseCarousels(onClose: () -> Unit) {
-    val scope = rememberCoroutineScope()
     val state = rememberXBottomSheetState()
-    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) { state.show() }
-    XBottomSheet(state = state, onDismissRequest = dismiss, top = { PresetTitle("Карусели (LazyColumn + LazyRow)") }) {
+    XBottomSheet(
+        state = state,
+        onDismissRequest = { state.hide(); onClose() },
+        top = { PresetTitle("Карусели (LazyColumn + LazyRow)") },
+    ) {
         LazyColumn(modifier = Modifier.fillMaxWidth(), state = rememberLazyListState()) {
             items(12) { row ->
                 PresetBodyText("Категория ${row + 1}")
@@ -266,14 +278,16 @@ private fun CaseCarousels(onClose: () -> Unit) {
 // (p) Контент = Column + verticalScroll (не Lazy). Длинный → заполняет → fill-режим; короткий был бы wrap.
 @Composable
 private fun CaseVerticalScroll(onClose: () -> Unit) {
-    val scope = rememberCoroutineScope()
     val state = rememberXBottomSheetState()
-    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) { state.show() }
-    XBottomSheet(state = state, onDismissRequest = dismiss, top = { PresetTitle("Column + verticalScroll") }) {
+    XBottomSheet(
+        state = state,
+        onDismissRequest = { state.hide(); onClose() },
+        top = { PresetTitle("Column + verticalScroll") },
+    ) {
         Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
             SPORTS.forEachIndexed { index, sport ->
-                PresetMenuCell(title = sport, onClick = dismiss, leadingColor = MarkerColors[index % MarkerColors.size])
+                PresetMenuCell(title = sport, onClick = { requestDismiss() }, leadingColor = MarkerColors[index % MarkerColors.size])
             }
         }
     }
@@ -282,19 +296,21 @@ private fun CaseVerticalScroll(onClose: () -> Unit) {
 // (q) Контент = LazyColumn с вложенным LazyColumn фиксированной высоты (вложенный вертикальный скролл).
 @Composable
 private fun CaseNestedLazyColumn(onClose: () -> Unit) {
-    val scope = rememberCoroutineScope()
     val state = rememberXBottomSheetState()
-    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) { state.show() }
-    XBottomSheet(state = state, onDismissRequest = dismiss, top = { PresetTitle("Вложенный LazyColumn") }) {
+    XBottomSheet(
+        state = state,
+        onDismissRequest = { state.hide(); onClose() },
+        top = { PresetTitle("Вложенный LazyColumn") },
+    ) {
         LazyColumn(modifier = Modifier.fillMaxWidth(), state = rememberLazyListState()) {
             item { PresetBodyText("Внешний LazyColumn. Ниже — вложенный LazyColumn фикс. высоты (свой скролл):") }
             item {
                 LazyColumn(modifier = Modifier.fillMaxWidth().height(300.dp)) {
-                    items(SPORTS) { sport -> PresetMenuCell(title = sport, onClick = dismiss) }
+                    items(SPORTS) { sport -> PresetMenuCell(title = sport, onClick = { requestDismiss() }) }
                 }
             }
-            items(SPORTS) { sport -> PresetMenuCell(title = sport, onClick = dismiss) }
+            items(SPORTS) { sport -> PresetMenuCell(title = sport, onClick = { requestDismiss() }) }
         }
     }
 }
@@ -302,15 +318,13 @@ private fun CaseNestedLazyColumn(onClose: () -> Unit) {
 // (a) Короткий Content: Title + BodyText + 1Button. Высота по контенту, стейт Content.
 @Composable
 private fun CaseContent(onClose: () -> Unit) {
-    val scope = rememberCoroutineScope()
     val state = rememberXBottomSheetState()
-    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) { state.show() }
     XBottomSheet(
         state = state,
-        onDismissRequest = dismiss,
+        onDismissRequest = { state.hide(); onClose() },
         top = { PresetTitle("Выйти из аккаунта") },
-        bottom = { PresetSingleButton(text = "Выйти", onClick = dismiss) },
+        bottom = { PresetSingleButton(text = "Выйти", onClick = { requestDismiss() }) },
     ) {
         PresetBodyText("Вы уверены, что хотите выйти из аккаунта? Несохранённые данные будут потеряны.")
     }
@@ -320,32 +334,28 @@ private fun CaseContent(onClose: () -> Unit) {
 // (высота по контенту, лимит Status Bar), а не FullScreen.
 @Composable
 private fun CaseMediumList(onClose: () -> Unit) {
-    val scope = rememberCoroutineScope()
     val state = rememberXBottomSheetState()
-    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) { state.show() }
     XBottomSheet(
         state = state,
-        onDismissRequest = dismiss,
+        onDismissRequest = { state.hide(); onClose() },
         top = { PresetTitle("Вид спорта (средний список)") },
     ) {
-        SportLazyList(SPORTS.take(11), dismiss)
+        SportLazyList(SPORTS.take(11))
     }
 }
 
 // (b2) Огромный список: контент > экрана (открытие Collapsed) → свайп вверх даёт ExpandedFullScreen (весь экран).
 @Composable
 private fun CaseHugeList(onClose: () -> Unit) {
-    val scope = rememberCoroutineScope()
     val state = rememberXBottomSheetState()
-    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) { state.show() }
     XBottomSheet(
         state = state,
-        onDismissRequest = dismiss,
+        onDismissRequest = { state.hide(); onClose() },
         top = { PresetTitle("Вид спорта (огромный список)") },
     ) {
-        SportLazyList(SPORTS, dismiss)
+        SportLazyList(SPORTS)
     }
 }
 
@@ -353,25 +363,21 @@ private fun CaseHugeList(onClose: () -> Unit) {
 // сразу ExpandedFullScreen, минуя Collapsed (без skip был бы Collapsed 60%) — видна ветка skip.
 @Composable
 private fun CaseSkipCollapsed(onClose: () -> Unit) {
-    val scope = rememberCoroutineScope()
     val state = rememberXBottomSheetState { skipCollapsed = true }
-    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) { state.show() }
     XBottomSheet(
         state = state,
-        onDismissRequest = dismiss,
+        onDismissRequest = { state.hide(); onClose() },
         top = { PresetTitle("Популярное (skipCollapsed)") },
     ) {
-        SportLazyList(SPORTS.take(50), dismiss)
+        SportLazyList(SPORTS.take(50))
     }
 }
 
 // (d) Loading → markContentReady: initialLoading, show() → Loading 192dp/Loader, задержка → markContentReady() → анимация.
 @Composable
 private fun CaseLoading(onClose: () -> Unit) {
-    val scope = rememberCoroutineScope()
     val state = rememberXBottomSheetState { initialLoading = true }
-    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) {
         state.show()
         delay(LOADING_DELAY_MS)
@@ -379,26 +385,24 @@ private fun CaseLoading(onClose: () -> Unit) {
     }
     XBottomSheet(
         state = state,
-        onDismissRequest = dismiss,
+        onDismissRequest = { state.hide(); onClose() },
         top = { PresetTitle("Виды спорта") },
     ) {
-        SportLazyList(SPORTS.take(50), dismiss)
+        SportLazyList(SPORTS.take(50))
     }
 }
 
 // (e) overlayBackground = false: видна тень Shadow Soft, тачи под листом всё равно заблокированы.
 @Composable
 private fun CaseNoOverlay(onClose: () -> Unit) {
-    val scope = rememberCoroutineScope()
     val state = rememberXBottomSheetState()
-    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) { state.show() }
     XBottomSheet(
         state = state,
-        onDismissRequest = dismiss,
-        config = xBottomSheetConfig { overlayBackground = false },
+        onDismissRequest = { state.hide(); onClose() },
+        config = rememberXBottomSheetConfig { overlayBackground = false },
         top = { PresetTitle("Без затемнения") },
-        bottom = { PresetSingleButton(text = "Понятно", onClick = dismiss) },
+        bottom = { PresetSingleButton(text = "Понятно", onClick = { requestDismiss() }) },
     ) {
         PresetBodyText("overlayBackground = false: фон не затемняется, виден Shadow Soft. Тачи под листом заблокированы.")
     }
@@ -407,34 +411,30 @@ private fun CaseNoOverlay(onClose: () -> Unit) {
 // (f) dragHandle = null: хендл скрыт, взаимодействие с высотой отключено (нет свайпа/expand). Закрытие — тап/кнопка.
 @Composable
 private fun CaseNoHandle(onClose: () -> Unit) {
-    val scope = rememberCoroutineScope()
     val state = rememberXBottomSheetState()
-    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) { state.show() }
     XBottomSheet(
         state = state,
-        onDismissRequest = dismiss,
-        config = xBottomSheetConfig { dragHandle = null },
+        onDismissRequest = { state.hide(); onClose() },
+        config = rememberXBottomSheetConfig { dragHandle = null },
         top = { PresetTitle("Без Drag Handle") },
-        bottom = { PresetSingleButton(text = "Закрыть", onClick = dismiss) },
+        bottom = { PresetSingleButton(text = "Закрыть", onClick = { requestDismiss() }) },
     ) {
         PresetBodyText("dragHandle = null: жесты высоты отключены. Закрыть можно тапом вне листа или кнопкой.")
     }
 }
 
 // (g) Additional Top «Добавить в купон / Отслеживать»: слот с Expanded/Collapsed. Состояние живёт на
-// state.additionalTopState (§7), переключается кнопкой в листе (внешний фактор).
+// state.additionalTopState, переключается кнопкой в листе (внешний фактор).
 @Composable
 private fun CaseAdditionalTop(onClose: () -> Unit) {
-    val scope = rememberCoroutineScope()
     val state = rememberXBottomSheetState()
-    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) { state.show() }
     val collapsed = state.additionalTopState == AdditionalTopState.Collapsed
     XBottomSheet(
         state = state,
-        onDismissRequest = dismiss,
-        config = xBottomSheetConfig { additionalTopCornerRadius = 16.dp },
+        onDismissRequest = { state.hide(); onClose() },
+        config = rememberXBottomSheetConfig { additionalTop { cornerRadius = 16.dp } },
         additionalTop = { AdditionalTopCard(collapsed = collapsed) },
         top = { PresetTitle("Событие") },
         bottom = {
@@ -459,21 +459,19 @@ private fun CaseAdditionalTop(onClose: () -> Unit) {
 // Закрытие листа скрывает IME (фокус уходит вместе с листом).
 @Composable
 private fun CaseImeSearch(onClose: () -> Unit) {
-    val scope = rememberCoroutineScope()
     val state = rememberXBottomSheetState()
     var query by remember { mutableStateOf("") }
-    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) { state.show() }
     val filtered = remember(query) { SPORTS.take(50).filter { sport -> sport.contains(query, ignoreCase = true) } }
     XBottomSheet(
         state = state,
-        onDismissRequest = dismiss,
+        onDismissRequest = { state.hide(); onClose() },
         top = {
             PresetTitle("Поиск + клавиатура")
             PresetSearchField(query = query, onQueryChange = { value -> query = value })
         },
     ) {
-        SportLazyList(filtered, dismiss)
+        SportLazyList(filtered)
     }
 }
 
@@ -483,23 +481,21 @@ private fun CaseImeSearch(onClose: () -> Unit) {
 // Для сравнения: кейс (i) с дефолтным Lift поднимает над клавиатурой ВЕСЬ контент, включая bottom.
 @Composable
 private fun CaseImeBottomUnderKeyboard(onClose: () -> Unit) {
-    val scope = rememberCoroutineScope()
     val state = rememberXBottomSheetState()
     var query by remember { mutableStateOf("") }
-    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) { state.show() }
     val filtered = remember(query) { SPORTS.take(50).filter { sport -> sport.contains(query, ignoreCase = true) } }
     XBottomSheet(
         state = state,
-        onDismissRequest = dismiss,
-        config = xBottomSheetConfig { keyboard { bottomBehavior = BottomKeyboardBehavior.StayUnderKeyboard } },
+        onDismissRequest = { state.hide(); onClose() },
+        config = rememberXBottomSheetConfig { keyboard { bottomBehavior = BottomKeyboardBehavior.StayUnderKeyboard } },
         top = {
             PresetTitle("Вид спорта")
             PresetSearchField(query = query, onQueryChange = { value -> query = value })
         },
-        bottom = { PresetSingleButton(text = "Показать все", onClick = dismiss) },
+        bottom = { PresetSingleButton(text = "Показать все", onClick = { requestDismiss() }) },
     ) {
-        SportLazyList(filtered, dismiss)
+        SportLazyList(filtered)
     }
 }
 
@@ -509,40 +505,36 @@ private fun CaseImeBottomUnderKeyboard(onClose: () -> Unit) {
 // где bottom, наоборот, прижат к нижней кромке листа и уходит ПОД клавиатуру.
 @Composable
 private fun CaseImeBottomAboveKeyboard(onClose: () -> Unit) {
-    val scope = rememberCoroutineScope()
     val state = rememberXBottomSheetState()
     var query by remember { mutableStateOf("") }
-    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) { state.show() }
     val filtered = remember(query) { SPORTS.take(50).filter { sport -> sport.contains(query, ignoreCase = true) } }
     XBottomSheet(
         state = state,
-        onDismissRequest = dismiss,
-        config = xBottomSheetConfig { keyboard { bottomBehavior = BottomKeyboardBehavior.Lift } },
+        onDismissRequest = { state.hide(); onClose() },
+        config = rememberXBottomSheetConfig { keyboard { bottomBehavior = BottomKeyboardBehavior.Lift } },
         top = {
             PresetTitle("Вид спорта")
             PresetSearchField(query = query, onQueryChange = { value -> query = value })
         },
-        bottom = { PresetSingleButton(text = "Показать все", onClick = dismiss) },
+        bottom = { PresetSingleButton(text = "Показать все", onClick = { requestDismiss() }) },
     ) {
-        SportLazyList(filtered, dismiss)
+        SportLazyList(filtered)
     }
 }
 
 // (j) Все способы закрытия опциональны: dismissOnOutsideTap=false, dismissOnSwipeDown=false — закрыть можно
-// ТОЛЬКО кнопкой (hide()).
+// ТОЛЬКО кнопкой (requestDismiss).
 @Composable
 private fun CaseNoDismiss(onClose: () -> Unit) {
-    val scope = rememberCoroutineScope()
     val state = rememberXBottomSheetState()
-    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) { state.show() }
     XBottomSheet(
         state = state,
-        onDismissRequest = dismiss,
-        config = xBottomSheetConfig { dismiss { onOutsideTap = false; onSwipeDown = false } },
+        onDismissRequest = { state.hide(); onClose() },
+        config = rememberXBottomSheetConfig { dismiss { onOutsideTap = false; onSwipeDown = false } },
         top = { PresetTitle("Закрытия выключены") },
-        bottom = { PresetSingleButton(text = "Закрыть", onClick = dismiss) },
+        bottom = { PresetSingleButton(text = "Закрыть", onClick = { requestDismiss() }) },
     ) {
         PresetBodyText("dismissOnOutsideTap = false, dismissOnSwipeDown = false. Тап вне листа и свайп вниз не закрывают — только кнопка.")
     }
@@ -553,15 +545,13 @@ private fun CaseNoDismiss(onClose: () -> Unit) {
 // авто-переход в ExpandedFullScreen.
 @Composable
 private fun CaseStaticGrow(onClose: () -> Unit) {
-    val scope = rememberCoroutineScope()
     val state = rememberXBottomSheetState { skipCollapsed = true }
     var itemCount by remember { mutableStateOf(4) }
-    val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) { state.show() }
     XBottomSheet(
         state = state,
-        onDismissRequest = dismiss,
-        config = xBottomSheetConfig { dragHandle = DragHandleStyle.Static },
+        onDismissRequest = { state.hide(); onClose() },
+        config = rememberXBottomSheetConfig { dragHandle = DragHandleStyle.Static },
         top = { PresetTitle("Static handle + рост контента") },
     ) {
         LazyColumn(modifier = Modifier.fillMaxWidth(), state = rememberLazyListState()) {
@@ -574,11 +564,64 @@ private fun CaseStaticGrow(onClose: () -> Unit) {
             items(itemCount) { index ->
                 PresetMenuCell(
                     title = "Элемент ${index + 1}",
-                    onClick = dismiss,
+                    onClick = { requestDismiss() },
                     leadingColor = MarkerColors[index % MarkerColors.size],
                 )
             }
         }
+    }
+}
+
+// (t) AdditionalTop + короткий контент: лист открывается по высоте контента (Content), а не peek. Карточка + тоггл
+// через scope.additionalTopState (var). Слепая зона E1: sticky-слой поверх wrap-контента.
+@Composable
+private fun CaseAdditionalTopWrap(onClose: () -> Unit) {
+    val state = rememberXBottomSheetState()
+    LaunchedEffect(Unit) { state.show() }
+    XBottomSheet(
+        state = state,
+        onDismissRequest = { state.hide(); onClose() },
+        config = rememberXBottomSheetConfig { additionalTop { cornerRadius = 16.dp } },
+        additionalTop = { AdditionalTopCard(collapsed = additionalTopState == AdditionalTopState.Collapsed) },
+        top = { PresetTitle("Событие (короткий)") },
+        bottom = {
+            PresetSingleButton(
+                text = if (additionalTopState == AdditionalTopState.Collapsed) "Развернуть" else "Свернуть",
+                onClick = {
+                    additionalTopState = if (additionalTopState == AdditionalTopState.Collapsed) {
+                        AdditionalTopState.Expanded
+                    } else {
+                        AdditionalTopState.Collapsed
+                    }
+                },
+            )
+        },
+    ) {
+        PresetBodyText("Короткий контент → лист открывается по высоте контента (Content), не peek. Карточка additionalTop сверху; кнопка переключает Expanded/Collapsed через scope.")
+    }
+}
+
+// (u) Loading + поиск: IME во время Loading. Слепая зона L5: фокус в поиске во время Loading, markContentReady
+// под открытой клавиатурой → авто-FullScreen (верх листа не уходит за потолок).
+@Composable
+private fun CaseLoadingImeSearch(onClose: () -> Unit) {
+    val state = rememberXBottomSheetState { initialLoading = true }
+    var query by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) {
+        state.show()
+        delay(LOADING_DELAY_MS)
+        state.markContentReady()
+    }
+    val filtered = remember(query) { SPORTS.take(50).filter { sport -> sport.contains(query, ignoreCase = true) } }
+    XBottomSheet(
+        state = state,
+        onDismissRequest = { state.hide(); onClose() },
+        top = {
+            PresetTitle("Поиск (Loading + IME)")
+            PresetSearchField(query = query, onQueryChange = { value -> query = value })
+        },
+    ) {
+        SportLazyList(filtered)
     }
 }
 

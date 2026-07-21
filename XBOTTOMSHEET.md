@@ -35,40 +35,72 @@ app/src/main/java/
 Не путать: в этом же модуле живут `com.alva.*` (порт AlvaBottomSheet) и `com.zorderlab.*`
 (z-order-лаба, кнопки 1–8) — это ДРУГИЕ эксперименты, к XBottomSheet отношения не имеют, не трогать.
 
-## API (контракт §3 спеки + расширения юзера, раунды 4–7)
+## API (контракт §3 спеки + расширения юзера + config-раунд, ПЕРЕСМОТРЕНО)
 
 ```kotlin
 val sheet = rememberXBottomSheetState {          // DSL-конфиг стейта (дефолты — в билдере)
     skipCollapsed = false
     initialLoading = false
-    peekFraction = XBottomSheetDefaults.PeekFraction   // высота Collapsed, дефолт 2/3 экрана (юзер; спека давала 0.60)
-    anchors { anchor("half", 0.5f) }             // свои промежуточные якоря (fill-режим), опц.
+    peekFraction = XBottomSheetDefaults.PeekFraction   // высота Collapsed, дефолт 2/3 экрана
+    anchors { "half" at 0.5f }                   // свои промежуточные якоря (fill-режим), infix `at`, опц.
 }
 
 XBottomSheet(
     state = sheet,
-    onDismissRequest = { scope.launch { sheet.hide() } }, // единственная точка закрытия
-    config = xBottomSheetConfig {                 // DSL-конфиг листа (@Immutable data, value-equality → skip рекомпозиции)
+    onDismissRequest = { sheet.hide() },          // suspend-лямбда; компонент зовёт её через свой scope
+    config = rememberXBottomSheetConfig {         // remember без ключей → configure раз; конфиг статичен на жизнь composable
         overlayBackground = true                  // false → затемнения нет, видна тень; тачи под листом блокированы ВСЕГДА
         dragHandle = DragHandleStyle.Theme        // null → хендл скрыт И жесты высоты отключены
-        additionalTopCornerRadius = 0.dp          // верхние скругления карточки Additional Top
+        additionalTop { cornerRadius = 0.dp }     // группа: верхние скругления карточки Additional Top
         dismiss {                                 // группа флагов закрытия
             onOutsideTap = true
             onSwipeDown = true                    // false → лист не тянется ниже своего якоря (floor = нижний якорь)
+            onBackPress = false                   // true → back закрывает лист; дефолт false — back уходит хосту (BackHandler)
         }
         keyboard {                                // поведение bottom при клавиатуре
             bottomBehavior = BottomKeyboardBehavior.Lift  // StayUnderKeyboard → bottom уходит ПОД клавиатуру
         }
+        colors {                                  // цвета конфигурируемы; Unspecified → дефолт спеки/темы (резолв в корне)
+            scrim = Color.Unspecified             // + sheetBackground / handleTheme / handleStatic (тоже опц.)
+        }
     },
-    additionalTop = { ... },         // sticky-слой; состояние: state.additionalTopState (плавная анимация fraction)
+    additionalTop = { ... },         // sticky-слой; слоты — receiver XBottomSheetScope
     top = { ... },                   // sticky, вне скролла
-    bottom = { ... },                // прибит к низу, вне скролла
-) { /* middle: контент САМ предоставляет скролл — LazyColumn/LazyGrid/Column+verticalScroll */ }
+    bottom = { PresetSingleButton("Закрыть") { requestDismiss() } },  // scope.requestDismiss() — закрытие из контента
+) { /* middle: receiver XBottomSheetScope; контент САМ предоставляет скролл — LazyColumn/Column+verticalScroll */ }
 
-// config опционален: config = XBottomSheetConfig.Default — если всё дефолтное.
-// Управление: sheet.show() / sheet.expand() / sheet.hide() / sheet.markContentReady()
+// config опционален: config = XBottomSheetConfigDefault — если всё дефолтное (статичный top-level инстанс).
+// Управление ВЫСОТОЙ — у хоста: sheet.show() / sheet.expand() / sheet.hide() / sheet.markContentReady().
+// XBottomSheetScope (receiver 4 слотов): sheetValue (вычислен) · isFillMode · var additionalTopState ·
+//   requestDismiss() (→ onDismissRequest хоста) · hideKeyboard() (дроп IME без закрытия). offset/metrics недостижимы.
+// sheet.isAnimating — факт бегущей анимации высоты (read-only, для гейта кнопок).
 // Состояние ВЫЧИСЛЯЕТСЯ (state.currentValue read-only). Переживает ротацию/process-death (rememberSaveable+Saver).
 ```
+
+## Контракт проводки конфига (K) — config-раунд, ПЕРЕСМОТРЕНО
+
+Страховка от протечки полей конфига в measure/жесты:
+1. Конфиг читается ТОЛЬКО в композиции корня (`XBottomSheet.kt`); вниз идут распакованные примитивы/value-объекты/
+   State. Цвета резолвятся в корне (`resolveScrim/…`, `Unspecified`→дефолт) и передаются готовыми `Color` в
+   `SheetScrim`/`SheetSurface`/`DragHandle`.
+2. Флаги suspend-логики копируются `SideEffect`'ом в поля стейта/scope (`dismissOnSwipeDown`, `onDismissRequest`-
+   launcher, `sheetScope.keyboardController/focusManager`).
+3. Логика-объекты (`SheetNestedScrollConnection`, `XBottomSheetScopeImpl`) `remember`ятся один раз (`remember(state)`).
+4. Инвариант: конфиг-группы — `@Immutable data class` только из value-полей (`Color`/`Dp`/`Boolean`/enum/вложенные
+   data), без лямбд и без `AnimationSpec`/`Shape` (дешёвая value-equality держит skip). Конфиг строится composable-
+   фабрикой `rememberXBottomSheetConfig { }` (remember без ключей → configure раз, статичен на жизнь composable;
+   динамика темы — через Unspecified→резолв в корне, не через пересоздание). Дефолт — top-level
+   `XBottomSheetConfigDefault` (стабильная идентичность). rememberSaveable не нужен (конфиг из кода, стейт — в Saver).
+
+### Закрытие и scope (D/E/F, ПЕРЕСМОТРЕНО)
+- `onDismissRequest: suspend () -> Unit` — единственная точка закрытия; компонент зовёт её через remembered scope
+  (`scope.launch`). Поле `state.onDismissRequest` — не-suspend launcher (settle/скрим/back/`requestDismiss` зовут
+  синхронно). Дроп IME (§6.5) — синхронно с закрытием: `onSheetHidden → sheetScope.hideKeyboard()`.
+- Слоты `additionalTop/top/bottom/middle` — receiver `XBottomSheetScope`, биндится к одному инстансу на корне.
+  Контент закрывает лист `requestDismiss()`, читает `sheetValue`/`isFillMode`, правит `additionalTopState`, роняет
+  IME `hideKeyboard()`. `offset`/`metrics`/команды высоты из контента недостижимы (команды высоты — у хоста).
+- Внутренняя якорная математика вынесена в `SheetAnchorTable` (rest-якоря + settle-выбор; стейт-машина —
+  оркестратор). Feel-токены жестов (`FlingVelocityThresholdPxPerSec`/`ResistanceMaxPx`) — в `XBottomSheetDefaults`.
 
 ## Стейт-машина (кратко)
 
@@ -116,7 +148,7 @@ XBottomSheet(
 - **AdditionalTop** — измеряемый стек (`AdditionalTopStack(additionalTopContent, sheetContent)` + MeasurePolicy):
   видимая высота карточки = fraction × (natural − overlap), Collapsed = полное скрытие (peek 20dp из спеки отменён
   юзером). Анимация — через `Animatable` (НЕ animate*AsState; драйвится snapshotFlow, `.value` читается в measure →
-  инвалидация layout, а не композиции). Верхние углы карточки — `additionalTopCornerRadius` (в `XBottomSheetConfig`).
+  инвалидация layout, а не композиции). Верхние углы карточки — группа `additionalTop { cornerRadius }` (в `XBottomSheetConfig`).
 - **StayUnderKeyboard** — кастомный `StayUnderKeyboardMeasurePolicy` (middle кончается у верха IME, bottom прижат
   к низу и уходит под клавиатуру) с override `maxIntrinsicHeight` (без него — краш на Infinity-замере).
 - **Все реактивные наблюдатели — в `ObserveSheetState`** (рост контента / IME show+hide / Hidden→дроп IME);
