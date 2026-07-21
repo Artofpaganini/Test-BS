@@ -23,7 +23,7 @@ sealed interface SheetValue {
 data class XSheetAnchor(val key: String, val heightFraction: Float)
 
 // Метрики экрана и контента. contentHeightPx — ЗАМЕР SubcomposeLayout при Constraints(maxHeight):
-// короткий контент → его натуральная высота; LazyColumn/overflow → maxHeight (заполняет). fills = заполнил
+// короткий контент → его натуральная высота; LazyColumn/overflow → maxHeight (заполняет). isFillMode = заполнил
 // доступную высоту → fill-режим (фикс-якоря). peekFraction — высота Collapsed; customAnchors — доп. якоря.
 internal data class SheetMetrics(
     val screenHeightPx: Int,
@@ -40,7 +40,7 @@ internal data class SheetMetrics(
     val peekPx: Int get() = (screenHeightPx * peekFraction).roundToInt().coerceIn(0, maxHeightPx)
 
     // Контент заполнил доступную высоту (замер при maxHeight вернул maxHeight) — LazyColumn или контент > экрана.
-    val fills: Boolean get() = contentHeightPx >= maxHeightPx
+    val isFillMode: Boolean get() = contentHeightPx >= maxHeightPx
 
     fun customAnchorPx(key: String): Int {
         val fraction = customAnchors.firstOrNull { anchor -> anchor.key == key }?.heightFraction ?: peekFraction
@@ -50,7 +50,7 @@ internal data class SheetMetrics(
 
 // Целевой стейт при открытии.
 internal fun SheetMetrics.openTarget(skipCollapsed: Boolean): SheetValue = when {
-    fills -> if (skipCollapsed) SheetValue.ExpandedFullScreen else SheetValue.Collapsed
+    isFillMode -> if (skipCollapsed) SheetValue.ExpandedFullScreen else SheetValue.Collapsed
     skipCollapsed -> SheetValue.Content
     contentHeightPx <= peekPx -> SheetValue.Content
     else -> SheetValue.Collapsed
@@ -58,7 +58,7 @@ internal fun SheetMetrics.openTarget(skipCollapsed: Boolean): SheetValue = when 
 
 // Целевой стейт при развороте из Collapsed.
 internal fun SheetMetrics.expandTarget(): SheetValue = when {
-    fills -> SheetValue.ExpandedFullScreen
+    isFillMode -> SheetValue.ExpandedFullScreen
     contentHeightPx <= maxHeightPx -> SheetValue.ExpandedContent
     else -> SheetValue.ExpandedFullScreen
 }

@@ -19,12 +19,14 @@ internal object XBottomSheetDefaults {
     val CornerRadius = 20.dp
     val MaxWidth = 512.dp
     val WideScreenThreshold = 600.dp
-    const val CollapsedFraction = 0.60f
+    // Высота Collapsed по умолчанию — 2/3 экрана (юзер; спека давала 0.60).
+    const val PeekFraction: Float = 2f / 3f
     val DragHandleSize = DpSize(36.dp, 4.dp)
     val DragHandleTopPadding = 8.dp
     val AdditionalTopOverlap = 32.dp
-    val AdditionalTopPeek = 20.dp
     val LoadingSheetHeight = 192.dp
+    // Дистанция разгона альфы скрима по высоте листа.
+    val ScrimFadeDistance = 120.dp
     val ScrimColor = Color.Black.copy(alpha = 0.40f)
     val HandleStatic = Color.White.copy(alpha = 0.40f)
 

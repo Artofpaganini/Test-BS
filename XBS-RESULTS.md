@@ -120,3 +120,28 @@
   peek 20dp; юзер потребовал, чтобы слот в Collapsed исчезал целиком. Реализовано в `SheetBody` (слот только в
   Expanded). При переносе в 1XUI Core решить, оставлять ли peek конфигурируемым.
 - **Свайп вниз при `dismissOnSwipeDown=false` — лист не тянется ниже своего якоря (нижняя граница драга = якорь).**
+
+## Раунд 8 — качественный рефактор (2026-07-21): перф/нейминг/DSL, полная регрессия
+
+Исполнение `XBS-QUALITY-RESEARCH.md` (53 находки, 5 линз) фазами P0–P4 с попунктными апрувами юзера.
+Правила юзера №0–10 (функционал неприкосновенен; без animate*AsState; лямбды не в remember; без
+remember(keys){create}; объекты только под remember; derivedStateOf; простой нейминг; DSL-билдеры;
+без it; без лямбд в data class; без require-валидаций) — соблюдены, подтверждено отдельным ревью
+(P1+P2: критов нет) и компайлер-метриками (Strong Skipping ON, 100% skippability).
+
+Ключевое: Animatable вместо animateFloatAsState (чтение в measure/draw) · стабильные MeasurePolicy/
+NestedScrollConnection (входы через State) · слот-идентичность SubcomposeLayout · IME-высота целиком
+в layout-фазе (замер: 1 событие на переход) · кэш floor-якоря (ноль аллокаций в драге) · drop(1)
+Hidden-коллектора · settle-гейт по isDragging · E1 fills-баг AdditionalTop · E2 overflow→isFillMode ·
+E3 markContentReady только для видимого листа · 16 переименований (protrusionPx→cardVisibleHeightPx,
+fills→isFillMode, contentReady→markContentReady и др.) · SheetInsets/AnchorCandidate/LiftContent ·
+DSL: rememberXBottomSheetState{} + xBottomSheetConfig{} (dismiss{}/keyboard{}), атомарная миграция
+11 call-sites demo.
+
+Финальная регрессия (эмулятор 2208×1840, adb): 19/19 кейсов зелёные. Визуально сверены посткейсы:
+a (navbar), b1 (ExpandedContent), k (рост→FullScreen), g (полное скрытие AdditionalTop + тоггл),
+i (IME true→back→false, откат авто-FullScreen), l (bottom ПОД клавиатурой и возврат), s (IME),
+j (тап снаружи не закрывает), r (осадка на кастомном якоре 50% медленным драгом; fling вниз →
+закрытие по направлению — штатная механика), d (Loading→корректная высота), e (тень).
+Заметка для ручного тестирования: fling вниз быстрее ~400px/s из peek уводит в закрытие, к якорю
+50% — медленный драг (порог FLING_VELOCITY_THRESHOLD).

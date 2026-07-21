@@ -11,7 +11,7 @@ import androidx.compose.ui.unit.dp
 
 // Пресет одиночной кнопки внизу листа (bottom-слот): на всю ширину, side 16, низ 8.
 @Composable
-internal fun Preset1Button(
+internal fun PresetSingleButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -26,10 +26,10 @@ internal fun Preset1Button(
                 top = PresetSpacing.Bottom,
                 bottom = PresetSpacing.Bottom,
             )
-            .height(BUTTON_HEIGHT),
+            .height(ButtonHeight),
     ) {
         Text(text = text)
     }
 }
 
-private val BUTTON_HEIGHT = 48.dp
+private val ButtonHeight = 48.dp

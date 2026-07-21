@@ -5,6 +5,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import org.xplatform.uikit.compose.modifier.keyboard.lift.KeyboardLiftState
@@ -21,7 +22,7 @@ import kotlin.math.roundToInt
 // snapToCurrentAnchor (поворот/resize) НЕ здесь: это one-shot по screenHeightPx/statusBarPx, не snapshotFlow —
 // иначе смена размеров пере-подписывала бы все коллекторы.
 @Composable
-internal fun SheetSnapshotFlowManager(
+internal fun ObserveSheetState(
     state: XBottomSheetState,
     keyboardState: State<KeyboardLiftState>,
     alwaysFullScreenOnIme: Boolean,
@@ -45,8 +46,11 @@ internal fun SheetSnapshotFlowManager(
                 }
         }
         launch {
-            snapshotFlow { state.currentValue == SheetValue.Hidden }
-                .collect { hidden -> if (hidden) onSheetHidden() }
+            // drop(1): пропускаем стартовую эмиссию — иначе смонтированный СКРЫТЫЙ лист сразу дёрнул бы
+            // onSheetHidden (дроп чужого фокуса/IME). Реагируем ТОЛЬКО на реальный переход visible → hidden.
+            snapshotFlow { state.isVisible }
+                .drop(1)
+                .collect { visible -> if (!visible) onSheetHidden() }
         }
     }
 }

@@ -7,10 +7,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import kotlin.math.exp
 
-// Сопротивление overshoot (§5): max * (1 - exp(-raw/max)). Применяется ТОЛЬКО в Content и ExpandedContent
-// (используется в XBottomSheetState.resolveDragTarget). В Collapsed и FullScreen НЕ применяется.
-internal fun resistedOvershoot(rawOvershootPx: Float, maxOvershootPx: Float): Float =
-    maxOvershootPx * (1f - exp(-rawOvershootPx / maxOvershootPx))
+// Сопротивление overshoot (§5): max * (1 - exp(-raw/max)). Применяется при перетяге ВВЕРХ над верхним якорем —
+// в Content и ExpandedContent (тянет к потолку) И в ExpandedFullScreen (rubber-band в зону статус-бара, spring
+// назад). В Collapsed НЕ применяется. См. XBottomSheetState.dragBy.
+internal fun resistedOvershoot(accumulatedOvershootPx: Float, maxOvershootPx: Float): Float =
+    maxOvershootPx * (1f - exp(-accumulatedOvershootPx / maxOvershootPx))
 
 // Драг листа за неподвижные области (хендл / top / bottom): вертикальный жест двигает высоту.
 // Скролл-область Middle обслуживается nested-scroll'ом; сюда попадают жесты вне списка. Знак: вниз (delta>0)

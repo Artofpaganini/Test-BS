@@ -10,11 +10,12 @@
 app/src/main/java/
 ├── com/onexui/bottomsheet/            # компонент
 │   ├── XBottomSheet.kt                # корневой composable: scrim, ширина, кастомный Layout-измеритель, слои
-│   ├── XBottomSheetState.kt           # стейт-машина, публичное API, resistance, settle
+│   ├── XBottomSheetConfig.kt          # DSL-конфиг листа: XBottomSheetConfig + dismiss/keyboard, @DslMarker
+│   ├── XBottomSheetState.kt           # стейт-машина, публичное API (+ DSL-конфиг стейта), resistance, settle
 │   ├── SheetAnchors.kt                # SheetValue (6), SheetMetrics, openTarget/expandTarget/anchorPx
 │   ├── SheetNestedScroll.kt           # связка скролла Middle с высотой
 │   ├── SheetDragGestures.kt           # драг за контент
-│   ├── SheetSnapshotFlowManager.kt    # ВСЕ реактивные snapshotFlow-наблюдатели в одном месте:
+│   ├── ObserveSheetState.kt    # ВСЕ реактивные snapshotFlow-наблюдатели в одном месте:
 │   │                                  #   рост контента · IME авто-FullScreen/откат · Hidden→дроп клавиатуры
 │   ├── DragHandle.kt                  # DragHandleStyle.Theme / .Static, read-only
 │   ├── AdditionalTop.kt               # sticky-слой: Expanded (утоплен 32dp) / Collapsed (peek 20dp)
@@ -25,44 +26,69 @@ app/src/main/java/
 │   ├── adjustment/  # Modifier.withAdjustmentForKeyboard — подъём контента над IME (вместо imePadding)
 │   ├── shrink/      # Modifier.withKeyboardShrink — сжатие скролл-секции на высоту IME
 │   └── lift/        # KeyboardLiftState — источник высоты/видимости IME
-└── com/onexui/demo/                   # XbsDemoActivity (LAUNCHER «XBS Demo») + XbsDemoScreen (11 кейсов)
+└── com/onexui/demo/                   # XbsDemoActivity + XbsDemoScreen (19 кейсов a..s: матрица стейтов,
+                                       #   IME l/s (bottom под/над клавиатурой), Lazy-контент m/n/o/p/q,
+                                       #   кастомный якорь r). Вход в приложение — com.zorderlab.LauncherActivity
+                                       #   (единый LAUNCHER: развилка «Z-Order лаба» / «XBS Demo»)
 ```
 
 Не путать: в этом же модуле живут `com.alva.*` (порт AlvaBottomSheet) и `com.zorderlab.*`
 (z-order-лаба, кнопки 1–8) — это ДРУГИЕ эксперименты, к XBottomSheet отношения не имеют, не трогать.
 
-## API (контракт §3 спеки)
+## API (контракт §3 спеки + расширения юзера, раунды 4–7)
 
 ```kotlin
-val sheet = rememberXBottomSheetState(skipCollapsed = false, initialLoading = false)
+val sheet = rememberXBottomSheetState {          // DSL-конфиг стейта (дефолты — в билдере)
+    skipCollapsed = false
+    initialLoading = false
+    peekFraction = XBottomSheetDefaults.PeekFraction   // высота Collapsed, дефолт 2/3 экрана (юзер; спека давала 0.60)
+    anchors { anchor("half", 0.5f) }             // свои промежуточные якоря (fill-режим), опц.
+}
 
 XBottomSheet(
     state = sheet,
     onDismissRequest = { scope.launch { sheet.hide() } }, // единственная точка закрытия
-    overlayBackground = true,        // false → затемнения нет, видна тень; тачи под листом блокированы ВСЕГДА
-    dragHandle = DragHandleStyle.Theme, // null → хендл скрыт И жесты высоты отключены
-    dismissOnOutsideTap = true,
-    dismissOnSwipeDown = true,       // игнорируется при dragHandle == null
-    additionalTop = { ... },         // sticky-слой над листом; состояние: state.additionalTopState
+    config = xBottomSheetConfig {                 // DSL-конфиг листа (@Immutable data, value-equality → skip рекомпозиции)
+        overlayBackground = true                  // false → затемнения нет, видна тень; тачи под листом блокированы ВСЕГДА
+        dragHandle = DragHandleStyle.Theme        // null → хендл скрыт И жесты высоты отключены
+        additionalTopCornerRadius = 0.dp          // верхние скругления карточки Additional Top
+        dismiss {                                 // группа флагов закрытия
+            onOutsideTap = true
+            onSwipeDown = true                    // false → лист не тянется ниже своего якоря (floor = нижний якорь)
+        }
+        keyboard {                                // поведение bottom при клавиатуре
+            bottomBehavior = BottomKeyboardBehavior.Lift  // StayUnderKeyboard → bottom уходит ПОД клавиатуру
+        }
+    },
+    additionalTop = { ... },         // sticky-слой; состояние: state.additionalTopState (плавная анимация fraction)
     top = { ... },                   // sticky, вне скролла
     bottom = { ... },                // прибит к низу, вне скролла
-) { /* middle — единственная скроллируемая секция */ }
+) { /* middle: контент САМ предоставляет скролл — LazyColumn/LazyGrid/Column+verticalScroll */ }
 
-// Управление: sheet.show() / sheet.expand() / sheet.hide() / sheet.contentReady()
-// Состояние ВЫЧИСЛЯЕТСЯ (state.currentValue read-only): факты — skipCollapsed, isLoading, контент.
+// config опционален: config = XBottomSheetConfig.Default — если всё дефолтное.
+// Управление: sheet.show() / sheet.expand() / sheet.hide() / sheet.markContentReady()
+// Состояние ВЫЧИСЛЯЕТСЯ (state.currentValue read-only). Переживает ротацию/process-death (rememberSaveable+Saver).
 ```
 
 ## Стейт-машина (кратко)
 
-`Hidden · Content · Collapsed · ExpandedContent · ExpandedFullScreen · Loading`
+`Hidden · Content · Collapsed · ExpandedContent · ExpandedFullScreen · Loading · Custom(key)` — sealed interface.
 
-- Открытие: контент ≤ 60% экрана → `Content` (высота по контенту); больше → `Collapsed` (фикс 60%).
-- `skipCollapsed=true`: сразу `Content` без лимита 60% (потолок — Status Bar); контент выше экрана → `ExpandedFullScreen`.
-- Жест вверх из Collapsed: влезает → `ExpandedContent`, нет → `ExpandedFullScreen`.
+Режим определяется ЗАМЕРОМ контента (`SheetMetrics.isFillMode`):
+- **wrap** (контент < экрана): Content / Collapsed(peek) / ExpandedContent — по высоте контента, как в спеке.
+- **fill** (LazyColumn или контент ≥ экрана): Collapsed(peek) / ExpandedFullScreen + якоря `Custom(key)` —
+  свайп останавливается на ближайшем (peek → custom → full).
+
+- Открытие: контент ≤ peek → `Content`; больше → `Collapsed` (peek = `peekFraction`, дефолт 2/3 экрана).
+- `skipCollapsed=true`: сразу `Content` без лимита peek (потолок — Status Bar); fills → `ExpandedFullScreen`.
+- Жест вверх из Collapsed: влезает → `ExpandedContent`, нет/fills → `ExpandedFullScreen`.
 - Жест вниз с начала списка: Expanded* → Collapsed; Content/Collapsed → закрытие (если dismissOnSwipeDown).
-- `Loading`: высота 192dp (+inset), Middle = Loader; закрыть можно, развернуть нельзя; `contentReady()` анимирует к цели.
+- `Loading`: высота 192dp (+inset), Middle = Loader; закрыть можно, развернуть нельзя; `markContentReady()` ждёт
+  ре-замер реального контента (не Loader'а) и анимирует к цели.
 - Рост контента → высота следует за контентом; при skipCollapsed и overflow → авто-FullScreen.
-- Лист никогда не заходит под Status Bar. Тап вне области/кнопка закрывают из любого стейта.
+- Лист не стоит под Status Bar (rubber-band overshoot из FullScreen может временно заходить — spring назад).
+- Тап вне области/кнопка закрывают из любого стейта. Жесты сериализованы FIFO-каналом
+  (`enqueueDrag`/`enqueueSettle` → единственный потребитель `processGestures`) — гонок drag↔settle нет.
 
 ## Правила клавиатуры (§6 + уточнения юзера — ОБЯЗАТЕЛЬНЫ)
 
@@ -80,10 +106,21 @@ XBottomSheet(
 
 ## Технические решения (зафиксированы, не переделывать без причины)
 
-- **Без BoxWithConstraints / SubcomposeLayout** (требование юзера): ширина — `LocalWindowInfo.containerSize`
-  (<600dp → 100%, ≥600dp → 512dp центр); замер — кастомный `Layout` с одним ребёнком:
-  `maxIntrinsicHeight(width)` для contentHeight (unclamped), `measure(Constraints.fixed(width, offset))` для плейсмента.
-  Композиция тела — одна. SubcomposeLayout легален ТОЛЬКО если в слот заедет intrinsics-несовместимый контент (Lazy) — фиксировать причину в XBS-SPEC.md.
+- **Без BoxWithConstraints**; ширина — `LocalWindowInfo.containerSize` (<600dp → 100%, ≥600dp → 512dp центр).
+- **Замер — SubcomposeLayout с двумя слотами** (легализован юзером под Lazy-контент — intrinsics с LazyColumn
+  не работают): слот DETECT (невидимый) меряется при `maxHeight = ceiling` → contentHeightPx (короткий контент
+  wrap'ится < max; Lazy/скролл заполняет == max → fill-режим); слот PLACE (видимый) меряется при
+  `Constraints.fixed(width, offset)`. Тело в каждом слоте композируется один раз.
+- **Middle не оборачивается в свой verticalScroll** — скролл предоставляет контент слота
+  (LazyColumn/LazyGrid/LazyRow/Column+verticalScroll — все проверены demo-кейсами m/n/o/p/q).
+- **AdditionalTop** — измеряемый стек (`AdditionalTopStack(additionalTopContent, sheetContent)` + MeasurePolicy):
+  видимая высота карточки = fraction × (natural − overlap), Collapsed = полное скрытие (peek 20dp из спеки отменён
+  юзером). Анимация — через `Animatable` (НЕ animate*AsState; драйвится snapshotFlow, `.value` читается в measure →
+  инвалидация layout, а не композиции). Верхние углы карточки — `additionalTopCornerRadius` (в `XBottomSheetConfig`).
+- **StayUnderKeyboard** — кастомный `StayUnderKeyboardMeasurePolicy` (middle кончается у верха IME, bottom прижат
+  к низу и уходит под клавиатуру) с override `maxIntrinsicHeight` (без него — краш на Infinity-замере).
+- **Все реактивные наблюдатели — в `ObserveSheetState`** (рост контента / IME show+hide / Hidden→дроп IME);
+  `snapToCurrentAnchor` (поворот) — отдельный one-shot LaunchedEffect по размерам экрана.
 - Compose-state (`mutableStateOf`), НЕ StateFlow.
 - Resistance: только Content/ExpandedContent, `max * (1 − exp(−raw/max))` от СЫРОГО аккумулированного overshoot.
 - Settle: ближайший якорь по midpoint между соседними якорями + учёт скорости.

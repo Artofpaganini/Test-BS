@@ -30,14 +30,14 @@ internal fun PresetMenuCell(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .fillMaxWidth()
-            .height(CELL_HEIGHT)
+            .height(CellHeight)
             .clickable(onClick = onClick)
             .padding(horizontal = PresetSpacing.Horizontal),
     ) {
         if (leadingColor != null) {
             Box(
                 modifier = Modifier
-                    .size(MARKER_SIZE)
+                    .size(MarkerSize)
                     .background(color = leadingColor, shape = CircleShape),
             )
             Box(modifier = Modifier.size(width = PresetSpacing.ItemGap, height = 0.dp))
@@ -50,5 +50,5 @@ internal fun PresetMenuCell(
     }
 }
 
-private val CELL_HEIGHT = 52.dp
-private val MARKER_SIZE = 20.dp
+private val CellHeight = 52.dp
+private val MarkerSize = 20.dp
