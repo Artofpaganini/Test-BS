@@ -5,9 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 
-// Стаб темы 1XUI для лаборатории. В реальном ядре цвета приходят из дизайн-токенов;
-// здесь держим только два поля, которые вшиты в анатомию XBottomSheet: фон листа и цвет сепаратора
-// (он же цвет Drag Handle в стиле Theme). Значения — лабовые (light/dark).
+// Стаб темы: фон листа и цвет сепаратора (= Drag Handle в стиле Theme).
 @Immutable
 internal data class XColors(
     val backgroundContent: Color,

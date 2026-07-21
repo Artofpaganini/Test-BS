@@ -44,18 +44,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.onexui.bottomsheet.AdditionalTopState
-import com.onexui.bottomsheet.DragHandleStyle
-import com.onexui.bottomsheet.BottomKeyboardBehavior
 import com.onexui.bottomsheet.NativeSheetSpring
 import com.onexui.bottomsheet.XBottomSheet
-import com.onexui.bottomsheet.rememberXBottomSheetState
-import com.onexui.bottomsheet.xBottomSheetConfig
-import com.onexui.bottomsheet.presets.PresetSingleButton
+import com.onexui.bottomsheet.additionaltop.AdditionalTopState
+import com.onexui.bottomsheet.config.BottomKeyboardBehavior
+import com.onexui.bottomsheet.config.xBottomSheetConfig
+import com.onexui.bottomsheet.handle.DragHandleStyle
 import com.onexui.bottomsheet.presets.PresetBodyText
 import com.onexui.bottomsheet.presets.PresetMenuCell
 import com.onexui.bottomsheet.presets.PresetSearchField
+import com.onexui.bottomsheet.presets.PresetSingleButton
 import com.onexui.bottomsheet.presets.PresetTitle
+import com.onexui.bottomsheet.state.rememberXBottomSheetState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -105,8 +105,7 @@ private val MarkerColors: List<Color> = listOf(
     Color(0xFFEF5350), Color(0xFF42A5F5), Color(0xFF66BB6A), Color(0xFFFFA726), Color(0xFFAB47BC),
 )
 
-// Список спорта на LazyColumn (сам скроллит). fillMaxWidth (НЕ fillMaxSize): высота wrap'ится — мало айтемов →
-// wrap-режим листа (по контенту), много → fill (заполняет, фикс-якоря). state saveable → скролл переживает ротацию.
+// LazyColumn сам скроллит. fillMaxWidth (не fillMaxSize): высота wrap'ится → мало айтемов wrap-режим, много fill.
 @Composable
 private fun SportLazyList(sports: List<String>, onClick: () -> Unit) {
     LazyColumn(modifier = Modifier.fillMaxWidth(), state = rememberLazyListState()) {
@@ -465,7 +464,6 @@ private fun CaseImeSearch(onClose: () -> Unit) {
     var query by remember { mutableStateOf("") }
     val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) { state.show() }
-    // remember(query) — кэш вычисления (не создание сущности; ключ дискретный): фильтр гоняется при смене query, а не на каждой рекомпозиции.
     val filtered = remember(query) { SPORTS.take(50).filter { sport -> sport.contains(query, ignoreCase = true) } }
     XBottomSheet(
         state = state,
@@ -490,7 +488,6 @@ private fun CaseImeBottomUnderKeyboard(onClose: () -> Unit) {
     var query by remember { mutableStateOf("") }
     val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) { state.show() }
-    // remember(query) — кэш вычисления (не создание сущности; ключ дискретный): фильтр гоняется при смене query, а не на каждой рекомпозиции.
     val filtered = remember(query) { SPORTS.take(50).filter { sport -> sport.contains(query, ignoreCase = true) } }
     XBottomSheet(
         state = state,
@@ -517,7 +514,6 @@ private fun CaseImeBottomAboveKeyboard(onClose: () -> Unit) {
     var query by remember { mutableStateOf("") }
     val dismiss: () -> Unit = { scope.launch { state.hide(); onClose() } }
     LaunchedEffect(Unit) { state.show() }
-    // remember(query) — кэш вычисления (не создание сущности; ключ дискретный): фильтр гоняется при смене query, а не на каждой рекомпозиции.
     val filtered = remember(query) { SPORTS.take(50).filter { sport -> sport.contains(query, ignoreCase = true) } }
     XBottomSheet(
         state = state,
@@ -553,7 +549,7 @@ private fun CaseNoDismiss(onClose: () -> Unit) {
 }
 
 // (k) DragHandle.Static + рост контента: кнопка в Middle добавляет элементы → onContentRemeasured тянет высоту
-// за контентом; при skipCollapsed=true и росте выше экрана срабатывает правило «контент вырос выше экрана» →
+// за контентом; при skipCollapsed=true и росте выше экрана срабатывает ветка «контент вырос выше экрана» →
 // авто-переход в ExpandedFullScreen.
 @Composable
 private fun CaseStaticGrow(onClose: () -> Unit) {
@@ -586,13 +582,11 @@ private fun CaseStaticGrow(onClose: () -> Unit) {
     }
 }
 
-// Карточка Additional Top — внешний контент слота (составные части листа не красим). Появление/сворачивание
-// по высоте плавно анимирует сам AdditionalTopStack (visibleFraction); тут дополнительно кросс-фейдим тексты
-// (alpha 0 в Collapsed), чтобы они гасли синхронно с усадкой высоты, а не обрезались резко.
+// Внешний контент слота Additional Top: кросс-фейд текстов (alpha 0 в Collapsed), чтобы гасли синхронно с
+// усадкой высоты, а не обрезались резко.
 @Composable
 private fun AdditionalTopCard(collapsed: Boolean) {
-    // Анимация alpha контента через Animatable (правило: не animate*AsState). .value читается в graphicsLayer-
-    // лямбде (draw-фаза) → кросс-фейд без покадровой рекомпозиции.
+    // alpha через Animatable: .value читается в graphicsLayer (draw-фаза) → кросс-фейд без покадровой рекомпозиции.
     val contentAlpha = remember { Animatable(if (collapsed) 0f else 1f) }
     LaunchedEffect(collapsed) {
         contentAlpha.animateTo(if (collapsed) 0f else 1f, NativeSheetSpring)

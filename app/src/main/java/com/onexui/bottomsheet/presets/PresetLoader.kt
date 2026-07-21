@@ -9,8 +9,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.onexui.bottomsheet.XBottomSheetDefaults
 
-// Пресет загрузки для Middle. Lottie внутри БШ запрещён (§9), скелетон компонентом не поддерживается —
-// простой индикатор прогресса на высоту LoadingSheetHeight (192dp).
+// Loader для Middle: простой индикатор (Lottie в БШ запрещён, скелетон не поддерживается).
 @Composable
 internal fun PresetLoader(modifier: Modifier = Modifier) {
     Box(

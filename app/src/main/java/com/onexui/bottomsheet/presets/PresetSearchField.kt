@@ -7,7 +7,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 
-// Пресет поля поиска в top-слоте: одна строка, плейсхолдер, side 16.
 @Composable
 internal fun PresetSearchField(
     query: String,

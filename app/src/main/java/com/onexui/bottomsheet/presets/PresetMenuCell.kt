@@ -17,8 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
-// Пресет строки-пункта меню: опциональный лид-маркер (цветной кружок вместо иконки — лаба без icon-зависимости),
-// заголовок, клик. Колбэк — параметр компонента, не поле модели (правило: без лямбд в data class).
 @Composable
 internal fun PresetMenuCell(
     title: String,

@@ -5,10 +5,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 
-// Отдельный exported-хост demo XBottomSheet со своим LAUNCHER (вторая иконка «XBS Demo»). Изоляция от
-// z-order-лабы: ноль правок её Kotlin-кода, только additive-блок в манифесте. edge-to-edge + adjustResize
-// (в манифесте) — обязательны, иначе WindowInsets.ime = 0 и лист не реагирует на клавиатуру (лист in-tree,
-// без Dialog/окна). Единственный ComposeView через setContent.
+// Отдельный exported-хост demo со своим LAUNCHER. edge-to-edge + adjustResize (манифест) обязательны, иначе
+// WindowInsets.ime = 0 и лист in-tree (без Dialog/окна) не реагирует на клавиатуру.
 class XbsDemoActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

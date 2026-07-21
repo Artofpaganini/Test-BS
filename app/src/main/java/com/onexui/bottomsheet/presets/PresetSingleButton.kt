@@ -9,7 +9,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-// Пресет одиночной кнопки внизу листа (bottom-слот): на всю ширину, side 16, низ 8.
 @Composable
 internal fun PresetSingleButton(
     text: String,

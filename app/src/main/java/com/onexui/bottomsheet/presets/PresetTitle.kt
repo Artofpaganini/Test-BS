@@ -8,7 +8,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 
-// Пресет заголовка листа: side 16, top 20 (дизайнерская рекомендация §9).
 @Composable
 internal fun PresetTitle(
     text: String,

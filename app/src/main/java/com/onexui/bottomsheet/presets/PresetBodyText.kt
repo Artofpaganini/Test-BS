@@ -7,7 +7,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 
-// Пресет основного текста листа: side 16.
 @Composable
 internal fun PresetBodyText(
     text: String,

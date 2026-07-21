@@ -1,4 +1,4 @@
-package com.onexui.bottomsheet
+package com.onexui.bottomsheet.handle
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -7,13 +7,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import com.onexui.bottomsheet.XBottomSheetDefaults
 
-// Стиль Drag Handle: Theme (темазависимый сепаратор) или Static (белый alpha .40, вне темы —
-// для Additional Top / статичных фонов). null в API листа = хендл скрыт и жесты высоты отключены.
-internal enum class DragHandleStyle { Theme, Static }
-
-// Хендл 36×4dp, r360, отступ сверху 8dp. Read-only: нажатий не поддерживает (только визуальный маркер),
-// рисуется поверх контента и вёрстку не двигает — позиционируется вызывающим (align TopCenter).
+// Read-only маркер, позиционируется вызывающим (align TopCenter), вёрстку не двигает.
 @Composable
 internal fun DragHandle(
     style: DragHandleStyle,
