@@ -169,3 +169,17 @@ rememberXBottomSheetConfig{} (remember без ключей); никаких obje
 Новые кейсы: (t) AdditionalTop+wrap (открытие по контенту ✓), (u) Loading+IME (авто-FullScreen после
 markContentReady под клавиатурой ✓). Регрессия: a/t/u/j via claude-in-mobile (screen.capture MCP — MIME-баг,
 скрины adb-фоллбеком), StateConfig/Saver не изменены (ключ байт-идентичен). Итого 21 demo-кейс.
+
+## Раунд 11 (2026-07-21) — баг Loading+IME (репорт юзера) + редизайн формы фикса
+
+Симптомы: (1) ранний фокус при Loading → после markContentReady лист улетал верхом за экран (планшет),
+белый хвост снизу; (2) при видимом Loader'е лист подскакивал при появлении клавиатуры (лифт мгновенный,
+IME плавная). Корень: onImeShown исключал Loading из промоушена, а adjustment-лифт был активен; переход
+Loading→рест-стейт не переоценивал промоушен. Фикс: единая точка решения shouldPromoteForIme для всех
+путей (onImeShown / markContentReady, вкл. Loading → сразу FullScreen, где лифта нет и Loader сжимается
+синхронно с IME). Поведение аксептовано юзером на девайсе.
+Редизайн формы (по фидбеку юзера «забитый гвоздь»): три зеркальных поля (imeVisible/lastImeHeightPx/
+alwaysFullScreenOnIme-снапшот) заменены live-ссылкой `keyboardState: State<KeyboardLiftState>` (вайринг
+SideEffect'ом, как dismissOnSwipeDown — канон K-контракта); Log.w удалён (комментарий у anchors{}-билдера).
+Верификация: планшет — u-поток с ранним фокусом: лист в экране, поле видно, хвоста нет (скрин);
+телефон — u/i/l/s/d; (d) без IME — чисто. Смоук 21 — исполнитель + выборочный контроль team lead.

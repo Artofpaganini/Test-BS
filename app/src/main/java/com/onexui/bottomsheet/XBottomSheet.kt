@@ -103,12 +103,10 @@ internal fun XBottomSheet(
     }
 
     // onSheetHidden роняет IME: иначе keyboard-lift оффсет продолжал бы поднимать контейнер и лист «улетел» бы
-    // вверх, отцепившись от нижней кромки. alwaysFullScreenOnIme для StayUnderKeyboard — bottom должен доставать
-    // до нижней кромки экрана, под клавиатуру.
+    // вверх, отцепившись от нижней кромки.
     ObserveSheetState(
         state = state,
         keyboardState = keyboardState,
-        alwaysFullScreenOnIme = config.keyboard.bottomBehavior == BottomKeyboardBehavior.StayUnderKeyboard && bottom != null,
         onSheetHidden = { sheetScope.hideKeyboard() },
     )
     // Back-press закрывает лист при dismiss.onBackPress; дефолт false → BackHandler(enabled=false) пропускает
@@ -122,6 +120,11 @@ internal fun XBottomSheet(
     SideEffect {
         state.dismissOnSwipeDown = config.dismiss.onSwipeDown
         state.onDismissRequest = { dismissScope.launch { currentOnDismiss() } }
+        // Ссылка на live-состояние IME + конфиг-флаг для решения о промоушене (стейт читает их в shouldPromoteForIme,
+        // без копий). alwaysFullScreenOnIme: StayUnderKeyboard + bottom → bottom доходит до нижней кромки под клавиатуру.
+        state.keyboardState = keyboardState
+        state.alwaysFullScreenOnIme =
+            config.keyboard.bottomBehavior == BottomKeyboardBehavior.StayUnderKeyboard && bottom != null
         sheetScope.keyboardController = keyboardController
         sheetScope.focusManager = focusManager
     }

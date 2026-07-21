@@ -1,8 +1,8 @@
 package com.onexui.bottomsheet.state
 
-import android.util.Log
 import androidx.compose.animation.core.Animatable
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import org.xplatform.uikit.compose.modifier.keyboard.lift.KeyboardLiftState
+import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 
 // Стейт-машина высоты листа. Compose-state (mutableStateOf), не StateFlow. Стейт вычисляется по метрикам и
@@ -53,17 +55,14 @@ internal class XBottomSheetState internal constructor(
     // Якорная таблица (rest-якоря + settle-математика), пересчёт только в updateMetrics. null — пока нет метрик.
     private var anchorTable: SheetAnchorTable? = null
 
-    // Стейт до авто-промоушена в FullScreen из-за клавиатуры: при скрытии IME откатываемся к нему.
+    // Рест-стейт до авто-промоушена в FullScreen из-за IME: при скрытии клавиатуры откатываемся к нему.
     private var imePromotedFrom: SheetValue? = null
 
-    init {
-        if (customAnchors.isNotEmpty()) {
-            Log.w(
-                "XBottomSheet",
-                "customAnchors работают только в fill-режиме (контент ≥ экрана); в wrap-режиме игнорируются",
-            )
-        }
-    }
+    // Единственные источники правды для решения о промоушене (без копий-снапшотов): keyboardState — live-состояние
+    // IME (xbet KeyboardLiftState); alwaysFullScreenOnIme — конфиг-флаг (StayUnderKeyboard + bottom). Оба вписываются
+    // SideEffect'ом корня тем же путём, что dismissOnSwipeDown/onDismissRequest.
+    internal var keyboardState: State<KeyboardLiftState>? = null
+    internal var alwaysFullScreenOnIme: Boolean = false
 
     val isVisible: Boolean get() = currentValue != SheetValue.Hidden
 
@@ -115,7 +114,19 @@ internal class XBottomSheetState internal constructor(
         } ?: awaitContentMetrics(loaderMetrics)
         // hide() мог прилететь за время ожидания ре-замера — повторная проверка перед анимацией.
         if (!isVisible) return
-        animateTo(measured.openTarget(skipCollapsed))
+        // Лист приходит из Loading в рест-стейт. Если клавиатура уже открыта — применяем тот же авто-FullScreen,
+        // что и onImeShown (иначе не-FullScreen лист поднимется withAdjustmentForKeyboard на полную высоту IME и
+        // верх уедет за экран). onImeShown при currentValue=Loading промоушен не делает (Loading вне promotable).
+        val target = measured.openTarget(skipCollapsed)
+        if (shouldPromoteForIme(target, measured)) {
+            imePromotedFrom = target
+            animateTo(SheetValue.ExpandedFullScreen)
+        } else {
+            // Приходим в естественный рест-стейт (в т.ч. откат промоушена Loading→FullScreen, если контент влезает
+            // с лифтом): сбрасываем imePromotedFrom, чтобы скрытие IME не откатывало обратно к Loading.
+            imePromotedFrom = null
+            animateTo(target)
+        }
     }
 
     private suspend fun awaitContentMetrics(loaderMetrics: SheetMetrics?): SheetMetrics =
@@ -133,18 +144,29 @@ internal class XBottomSheetState internal constructor(
         }
     }
 
-    internal suspend fun onImeShown(imeHeightPx: Int, alwaysFullScreen: Boolean) {
+    // Промоушен в FullScreen при видимой IME: не-FullScreen лист поднимается withAdjustmentForKeyboard на ПОЛНУЮ
+    // высоту клавиатуры (дамб-лифт), поэтому якорь + IME выше потолка → верх листа уехал бы за экран. В FullScreen
+    // подъёма нет (Middle сжимается). alwaysFullScreenOnIme — режим StayUnderKeyboard (bottom уходит под клавиатуру).
+    private fun shouldPromoteForIme(value: SheetValue, measured: SheetMetrics): Boolean {
+        val ime = keyboardState?.value ?: return false
+        if (!ime.isKeyboardVisible) return false
+        // Loading: лист 192dp у нижней кромки; ADJUSTMENT-лифт снапнул бы его на полную высоту IME мгновенно
+        // (пока клавиатура ещё анимируется) → «висение в воздухе». Сразу FullScreen — там лифта нет, а Loader
+        // сжимается withKeyboardShrink покадрово (WindowInsetsAnimationCallback), синхронно с клавиатурой.
+        if (value == SheetValue.Loading) return true
+        val promotable = value == SheetValue.Content || value == SheetValue.Collapsed ||
+            value == SheetValue.ExpandedContent || value is SheetValue.Custom
+        if (!promotable) return false
+        return alwaysFullScreenOnIme ||
+            measured.anchorPx(value, skipCollapsed) + ime.keyboardHeight.roundToInt() > measured.maxHeightPx
+    }
+
+    internal suspend fun onImeShown() {
         val measured = metrics ?: return
         if (!isVisible) return
-        when (currentValue) {
-            SheetValue.Content, SheetValue.Collapsed, SheetValue.ExpandedContent, is SheetValue.Custom -> {
-                val liftedTop = measured.anchorPx(currentValue, skipCollapsed) + imeHeightPx
-                if (alwaysFullScreen || liftedTop > measured.maxHeightPx) {
-                    imePromotedFrom = currentValue
-                    animateTo(SheetValue.ExpandedFullScreen)
-                }
-            }
-            else -> Unit
+        if (shouldPromoteForIme(currentValue, measured)) {
+            imePromotedFrom = currentValue
+            animateTo(SheetValue.ExpandedFullScreen)
         }
     }
 

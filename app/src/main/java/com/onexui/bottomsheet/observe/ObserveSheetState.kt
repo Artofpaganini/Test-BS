@@ -10,7 +10,6 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import org.xplatform.uikit.compose.modifier.keyboard.lift.KeyboardLiftState
-import kotlin.math.roundToInt
 
 // Единая точка реактивных snapshotFlow-наблюдателей листа. Три дочерних коллектора (каждый переживает отмену
 // соседа):
@@ -24,10 +23,9 @@ import kotlin.math.roundToInt
 internal fun ObserveSheetState(
     state: XBottomSheetState,
     keyboardState: State<KeyboardLiftState>,
-    alwaysFullScreenOnIme: Boolean,
     onSheetHidden: () -> Unit,
 ) {
-    LaunchedEffect(state, keyboardState, alwaysFullScreenOnIme) {
+    LaunchedEffect(state, keyboardState) {
         launch {
             snapshotFlow { state.metrics?.contentHeightPx }
                 .filterNotNull()
@@ -36,15 +34,12 @@ internal fun ObserveSheetState(
         launch {
             // Ключ (lift, isLoading): при снятии Loading под открытой IME (keyboardState не менялся) промоушен
             // переоценивается заново — иначе Collapsed под видимой IME увёл бы верх листа за статус-бар (без
-            // авто-FullScreen). onImeShown идемпотентен (гард по стейтам).
+            // авто-FullScreen). onImeShown идемпотентен (гард по стейтам); высоту/флаг стейт читает live из
+            // keyboardState (см. XBottomSheetState.shouldPromoteForIme).
             snapshotFlow { keyboardState.value to state.isLoading }
                 .distinctUntilChanged()
                 .collect { (lift, _) ->
-                    if (lift.isKeyboardVisible) {
-                        state.onImeShown(lift.keyboardHeight.roundToInt(), alwaysFullScreenOnIme)
-                    } else {
-                        state.onImeHidden()
-                    }
+                    if (lift.isKeyboardVisible) state.onImeShown() else state.onImeHidden()
                 }
         }
         launch {
