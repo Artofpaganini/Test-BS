@@ -90,6 +90,7 @@ private enum class DemoCase(val label: String) {
     T("(t) AdditionalTop + короткий контент (wrap)"),
     U("(u) Loading + поиск: IME во время Loading"),
     V("(v) predictive back — onBackPress=true"),
+    W("(w) live-ручки: peekFraction + anchors"),
 }
 
 private val SPORTS: List<String> = listOf(
@@ -189,6 +190,7 @@ private fun XbsCaseHost(case: DemoCase, onClose: () -> Unit) {
         DemoCase.T -> CaseAdditionalTopWrap(onClose)
         DemoCase.U -> CaseLoadingImeSearch(onClose)
         DemoCase.V -> CasePredictiveBack(onClose)
+        DemoCase.W -> CaseLiveHandles(onClose)
     }
 }
 
@@ -640,6 +642,45 @@ private fun CasePredictiveBack(onClose: () -> Unit) {
         top = { PresetTitle("Predictive back") },
     ) {
         PresetBodyText("dismiss.onBackPress = true: back-жест (Android 14+) визуально двигает лист за пальцем. Отпустить — лист закрывается; отменить — возвращается на место.")
+    }
+}
+
+// (w) Живые ручки стейта: peekFraction и anchors меняются прямо в композиции — покоящийся лист доезжает к новому
+// якорю сам, без жеста. Кнопка «peek» двигает Collapsed-якорь (лист на нём — переезжает сразу). Кнопка «средний
+// якорь» правит кастомный rest-стоп: свайпни лист на него, затем меняй высоту — лист переедет между 50% и 33%.
+@Composable
+private fun CaseLiveHandles(onClose: () -> Unit) {
+    val state = rememberXBottomSheetState { anchors { "mid" at 0.5f } }
+    var isWidePeek by remember { mutableStateOf(false) }
+    var isLowMid by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { state.show() }
+    XBottomSheet(
+        state = state,
+        onDismissRequest = { state.hide(); onClose() },
+        top = {
+            PresetTitle("Живые ручки стейта")
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(
+                    onClick = {
+                        isWidePeek = !isWidePeek
+                        state.peekFraction = if (isWidePeek) 0.5f else 2f / 3f
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(text = if (isWidePeek) "peek → 2/3" else "peek → 1/2") }
+                Button(
+                    onClick = {
+                        isLowMid = !isLowMid
+                        state.anchors { "mid" at if (isLowMid) 0.33f else 0.5f }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(text = if (isLowMid) "средний якорь → 50%" else "средний якорь → 33%") }
+            }
+        },
+    ) {
+        SportLazyList(SPORTS)
     }
 }
 

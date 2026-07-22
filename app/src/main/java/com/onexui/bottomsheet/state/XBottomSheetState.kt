@@ -26,16 +26,29 @@ import kotlin.time.Duration.Companion.milliseconds
 // фактам (skipCollapsed / isLoading / кастомные якоря); режим wrap/fill — по замеру (SheetMetrics.isFillMode).
 @Stable
 internal class XBottomSheetState internal constructor(
-    config: XBottomSheetStateConfig,
+    skipCollapsed: Boolean,
+    val initialLoading: Boolean,
+    peekFraction: Float,
+    anchors: List<XSheetAnchor>,
 ) {
-    val skipCollapsed: Boolean = config.skipCollapsed
-    val peekFraction: Float = config.peekFraction
-    val customAnchors: List<XSheetAnchor> = config.anchors
+    // Живые поведенческие ручки: билдер задаёт начальную вариацию, дальше меняются прямо в композиции —
+    // покоящийся лист доезжает к новому якорю сам (см. onLiveConfigChanged). Канон M3 SheetState: поведение
+    // живёт в стейте, а не в отдельном config-объекте.
+    var skipCollapsed: Boolean by mutableStateOf(skipCollapsed)
+    var peekFraction: Float by mutableStateOf(peekFraction)
+    var anchors: List<XSheetAnchor> by mutableStateOf(anchors)
+        private set
+
+    // Смена якорей той же DSL-грамматикой, что и в билдере. private set у поля: XSheetAnchor с internal
+    // constructor создаётся только этим DSL, руками список не собрать.
+    fun anchors(configure: XSheetAnchorsBuilder.() -> Unit) {
+        anchors = XSheetAnchorsBuilder().apply(configure).build()
+    }
 
     var currentValue: SheetValue by mutableStateOf(SheetValue.Hidden)
         private set
 
-    var isLoading by mutableStateOf(config.initialLoading)
+    var isLoading by mutableStateOf(initialLoading)
         internal set
 
     var additionalTopState by mutableStateOf(AdditionalTopState.Expanded)
@@ -143,6 +156,35 @@ internal class XBottomSheetState internal constructor(
         }
     }
 
+    // Живые поведенческие поля (skipCollapsed/peekFraction/anchors) сменились в композиции: пере-резолвим метрики и
+    // якорную таблицу под новые значения и, если лист в покое (виден, не грузится, палец не тянет), доводим высоту к
+    // пере-резолвленному якорю сразу — не дожидаясь жеста. updateMetrics при неизменных размерах рано выходит и
+    // держал бы старый peekFraction/anchors в метриках, поэтому copy здесь обязателен. Гонки нет: и updateMetrics
+    // (measure), и этот вызов идут на main. Идёт настоящая gesture-анимация — animateTo мягко перехватит её (тот же
+    // мьютекс Animatable, что у onContentRemeasured); закрытый лист/Loading оставляем как есть.
+    internal suspend fun onLiveConfigChanged() {
+        val current = metrics ?: return
+        val rebuilt = current.copy(peekFraction = peekFraction, customAnchors = anchors)
+        metrics = rebuilt
+        val table = rebuilt.toAnchorTable(skipCollapsed)
+        anchorTable = table
+        if (!isVisible || currentValue == SheetValue.Loading || isDragging) return
+        val target = resolveRestTargetAfterConfigChange(table)
+        if (target != currentValue) currentValue = target
+        offset.animateTo(rebuilt.anchorPx(target, skipCollapsed).toFloat(), NativeSheetSpring)
+    }
+
+    // Текущее value валидно → оно же (доедем к его новому px). Custom(key), у которого ключ исчез из anchors →
+    // ближайший существующий rest-якорь по px (settleTarget с v=0, без dismiss), НЕ закрытие листа.
+    private fun resolveRestTargetAfterConfigChange(table: SheetAnchorTable): SheetValue {
+        val value = currentValue
+        if (value is SheetValue.Custom && anchors.none { anchor -> anchor.key == value.key }) {
+            return table.settleTarget(offset.value, 0f, isDismissAllowed = false, flingVelocityThresholdPxPerSec)
+                ?: value
+        }
+        return value
+    }
+
     // Промоушен в FullScreen при видимой IME: не-FullScreen лист поднимается withAdjustmentForKeyboard на ПОЛНУЮ
     // высоту клавиатуры (дамб-лифт), поэтому якорь + IME выше потолка → верх листа уехал бы за экран. В FullScreen
     // подъёма нет (Middle сжимается). alwaysFullScreenOnIme — режим StayUnderKeyboard (bottom уходит под клавиатуру).
@@ -205,7 +247,7 @@ internal class XBottomSheetState internal constructor(
             contentHeightPx = contentHeightPx,
             loadingSheetHeightPx = loadingSheetHeightPx,
             peekFraction = peekFraction,
-            customAnchors = customAnchors,
+            customAnchors = anchors,
         )
         metrics = updated
         anchorTable = updated.toAnchorTable(skipCollapsed)

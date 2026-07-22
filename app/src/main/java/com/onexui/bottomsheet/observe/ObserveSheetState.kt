@@ -11,13 +11,15 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import org.xplatform.uikit.compose.modifier.keyboard.lift.KeyboardLiftState
 
-// Единая точка реактивных snapshotFlow-наблюдателей листа. Три дочерних коллектора (каждый переживает отмену
+// Единая точка реактивных snapshotFlow-наблюдателей листа. Четыре дочерних коллектора (каждый переживает отмену
 // соседа):
 //   1. Рост/уменьшение контента → высота следует. Каждый пересчёт — в отдельном launch: его offset.animateTo
 //      прерывается конкурирующей анимацией (show/settle) CancellationException'ом, без launch это убило бы
 //      коллектор (после первого прерывания рост перестал бы отслеживаться).
 //   2. Клавиатура → авто-FullScreen при нехватке места (или всегда, для StayUnderKeyboard) / откат при скрытии.
 //   3. Hidden → onSheetHidden (принудительный дроп IME).
+//   4. Живые поля стейта (skipCollapsed/peekFraction/anchors) → пере-резолв метрик+якорей и доводка высоты у
+//      покоящегося листа. Тот же приём отдельного launch, что и #1 (конкурирующая анимация не убивает коллектор).
 // snapToCurrentAnchor (поворот) — НЕ здесь: one-shot по размерам экрана, не snapshotFlow.
 @Composable
 internal fun ObserveSheetState(
@@ -48,6 +50,14 @@ internal fun ObserveSheetState(
             snapshotFlow { state.isVisible }
                 .drop(1)
                 .collect { visible -> if (!visible) onSheetHidden() }
+        }
+        launch {
+            // drop(1): стартовую вариацию (её задал билдер) не пере-резолвим — лист ещё не показан. Реагируем
+            // на живые смены. Отдельный launch на эмиссию — как в #1.
+            snapshotFlow { Triple(state.skipCollapsed, state.peekFraction, state.anchors) }
+                .drop(1)
+                .distinctUntilChanged()
+                .collect { launch { state.onLiveConfigChanged() } }
         }
     }
 }

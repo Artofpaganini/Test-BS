@@ -5,9 +5,10 @@ import com.onexui.bottomsheet.additionaltop.AdditionalTopState
 
 // Saver-контракт (инвариант process-death): append-only список [tag, isLoading, additionalTopName, …новое в конец];
 // чтение getOrNull(i) as? T ?: default (forward-tolerance); tag-freeze (h/c/col/ec/efs/l/cu: — персистентные теги,
-// ре-неймы SheetValue их НЕ меняют); config НЕ сохраняется (пересоздаётся DSL; Custom(key) при удалённом якоре
-// деградирует к peekFraction). В этом раунде не меняется — XBottomSheetStateConfig не растёт.
-internal fun xBottomSheetStateSaver(config: XBottomSheetStateConfig): Saver<XBottomSheetState, List<Any>> = Saver(
+// ре-неймы SheetValue их НЕ меняют). Живые поля (peekFraction/anchors/skipCollapsed) НЕ сохраняются: стейт
+// пересоздаётся билдером (начальная вариация), а последующие присвоения повторяет код в композиции; Custom(key)
+// при удалённом якоре деградирует к peekFraction.
+internal fun xBottomSheetStateSaver(builder: XBottomSheetStateBuilder): Saver<XBottomSheetState, List<Any>> = Saver(
     save = { state ->
         listOf(sheetValueTag(state.currentValue), state.isLoading, state.additionalTopState.name)
     },
@@ -15,7 +16,7 @@ internal fun xBottomSheetStateSaver(config: XBottomSheetStateConfig): Saver<XBot
         val tag = saved.getOrNull(0) as? String ?: "h"
         val loading = saved.getOrNull(1) as? Boolean ?: false
         val topName = saved.getOrNull(2) as? String
-        XBottomSheetState(config).apply {
+        builder.buildState().apply {
             restore(
                 value = sheetValueFromTag(tag),
                 isLoadingSaved = loading,
