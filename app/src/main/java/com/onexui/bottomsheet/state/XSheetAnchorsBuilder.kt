@@ -7,7 +7,6 @@ import com.onexui.bottomsheet.config.XBottomSheetDsl
 internal class XSheetAnchorsBuilder {
     private val anchors = mutableListOf<XSheetAnchor>()
 
-    // Канон DraggableAnchors: `"half" at 0.5f`. member-ext — infix виден только в скоупе билдера anchors { }.
     infix fun String.at(heightFraction: Float) {
         anchors.add(XSheetAnchor(key = this, heightFraction = heightFraction))
     }

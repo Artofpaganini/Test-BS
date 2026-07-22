@@ -3,6 +3,18 @@
 Полное ТЗ: `/Users/Victor/.claude/commands/alva-bs-zorder-test.md`.
 Прогноз (§0 ТЗ) vs Факт по трём флоу заполняет **фаза 4** (после прогона на устройстве).
 
+> **АКТУАЛЬНОЕ СОСТОЯНИЕ (позже всего ниженаписанного).** Порт `com.alva.*` (AlvaBottomSheet +
+> nav3-сцены `AlvaBottomSheetScene`/`SceneStrategy`, device-стабы, копия `KeyboardLiftState`) из проекта
+> УДАЛЁН вместе с nav3-проводкой листов (`NavDisplay`/backStack/`Nav3SheetRoute`). Z-order-лаба
+> (`com.zorderlab.*`, флоу 1–8) переведена напрямую на **XBottomSheet**: лист управляется
+> `XBottomSheetState.show/hide`, как в demo. Оконный режим (эквивалент `hostInWindow` из разделов ниже)
+> реализован НЕ в компоненте, а обёрткой уровня лабы `com.zorderlab.WindowedXBottomSheet` — full-screen
+> прозрачный `Dialog` (`usePlatformDefaultWidth=false`, `decorFitsSystemWindows=false`) с гашением
+> платформенного dim; окно диалога добавляется в WindowManager позже BSD/Dialog → лист ложится сверху
+> (правило «одинаковый слой = порядок добавления»). Флоу 1/2/4 (второй оверлей сверху), флоу 3 (BSD
+> сверху) и XBS-demo (a/i/u) перепроверены на устройстве после перевода — поведение сохранено.
+> Разделы ниже — исторический лог ресёрча Alva-порта (фазы 0–2), оставлен для справки.
+
 ---
 
 ## Артефакт-стратегия (решение фазы 1)

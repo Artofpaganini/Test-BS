@@ -14,12 +14,10 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.ComponentDialog
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.Fragment
-import androidx.navigation3.runtime.NavKey
 
 private const val BSD_TAG = "sample_bsd"
 private const val DIALOG_TAG = "sample_dialog"
@@ -28,15 +26,12 @@ private const val FLOW_DELAY_MS = 5000L
 // View-мир z-order-теста. Кнопки запускают cross-open флоу. Связь fragment→activity — каст requireActivity()
 // к ZOrderHost (без event bus). Таймеры кнопок 1, 2 и 4 живут здесь (Handler на main looper), снимаются в
 // onDestroyView. Таймер кнопки 3 — на стороне Activity (см. openSheetThenRaiseDialog). Кнопка 4 поднимает
-// nav3-лист в СОБСТВЕННОМ ComposeView фрагмента, без обращения к Activity.
+// XBS-лист (в собственном окне) из СОБСТВЕННОГО ComposeView фрагмента, без обращения к Activity.
 class HostFragment : Fragment(), SheetOverlayDialogRaiser {
 
     private val flowHandler = Handler(Looper.getMainLooper())
 
-    // Fragment-scoped бэкстек nav3 для кнопки 4: лист поднимает сам фрагмент, а не Activity.
-    private val sheetBackStack = mutableStateListOf<NavKey>(BaseRoute)
-
-    // ComposeView с fragment-hosted листом добавляется в иерархию ТОЛЬКО на время флоу кнопки 4 и снимается
+    // ComposeView c fragment-hosted листом добавляется в иерархию ТОЛЬКО на время флоу кнопки 4 и снимается
     // при закрытии листа. Так решается pass-through: пока лист закрыт, поверх кнопок нет ComposeView и клики
     // по кнопкам не перехватываются прозрачной базой.
     private var sheetComposeView: ComposeView? = null
@@ -66,11 +61,11 @@ class HostFragment : Fragment(), SheetOverlayDialogRaiser {
                     gravity = Gravity.CENTER
                 },
             )
-            addView(buildButton("1 · BSD-fragment → +5s nav3 sheet", ::startBsdThenSheetFlow))
-            addView(buildButton("2 · Dialog-fragment → +5s nav3 sheet", ::startDialogThenSheetFlow))
-            addView(buildButton("3 · nav3 sheet → +5s BSD-fragment", ::startSheetThenBsdFlow))
-            addView(buildButton("4 · BSD-FRAGMENT → +5S NAV3 (fragment-hosted)", ::startBsdThenFragmentHostedSheetFlow))
-            addView(buildButton("5 · BSD-FRAGMENT → +5S NAV3 IN OWN WINDOW", ::startBsdThenWindowHostedSheetFlow))
+            addView(buildButton("1 · BSD-fragment → +5s XBS sheet", ::startBsdThenSheetFlow))
+            addView(buildButton("2 · Dialog-fragment → +5s XBS sheet", ::startDialogThenSheetFlow))
+            addView(buildButton("3 · XBS sheet → +5s BSD-fragment", ::startSheetThenBsdFlow))
+            addView(buildButton("4 · BSD-FRAGMENT → +5S XBS (fragment-hosted)", ::startBsdThenFragmentHostedSheetFlow))
+            addView(buildButton("5 · BSD-FRAGMENT → +5S XBS IN OWN WINDOW", ::startBsdThenWindowHostedSheetFlow))
             addView(buildButton("8 · COMPOSE-ОКНО → +5S BSD → +5S RE-RAISE", ::startDynamicWindowCycleFlow))
         }
         rootContainer = FrameLayout(context).apply {
@@ -86,36 +81,36 @@ class HostFragment : Fragment(), SheetOverlayDialogRaiser {
     }
 
     // Кнопка 1: показываем BottomSheetDialogFragment (новое окно поверх Activity), через 5с просим Activity
-    // поднять nav3-лист «поверх» (гипотеза: лист окажется позади, т.к. он в окне Activity ниже окна диалога).
+    // поднять XBS-лист в собственном окне — окно листа добавлено в WindowManager позже → ляжет ПОВЕРХ BSD.
     private fun startBsdThenSheetFlow() {
         SampleBottomSheetDialogFragment().show(parentFragmentManager, BSD_TAG)
-        flowHandler.postDelayed({ zOrderHost().openAlvaBottomSheet() }, FLOW_DELAY_MS)
+        flowHandler.postDelayed({ zOrderHost().openActivitySheet() }, FLOW_DELAY_MS)
     }
 
-    // Кнопка 2: показываем DialogFragment, через 5с просим Activity поднять nav3-лист «поверх».
+    // Кнопка 2: показываем DialogFragment, через 5с просим Activity поднять XBS-лист поверх.
     private fun startDialogThenSheetFlow() {
         SampleDialogFragment().show(parentFragmentManager, DIALOG_TAG)
-        flowHandler.postDelayed({ zOrderHost().openAlvaBottomSheet() }, FLOW_DELAY_MS)
+        flowHandler.postDelayed({ zOrderHost().openActivitySheet() }, FLOW_DELAY_MS)
     }
 
-    // Кнопка 3: просим Activity открыть nav3-лист и через 5с пнуть нас поднять BSD поверх листа. Таймер —
-    // на стороне Activity; сюда прилетит raiseDialogOverSheet() (гипотеза: диалог ляжет поверх листа).
+    // Кнопка 3: просим Activity открыть XBS-лист и через 5с пнуть нас поднять BSD поверх листа. Таймер —
+    // на стороне Activity; сюда прилетит raiseDialogOverSheet() (окно BSD добавлено позже → ляжет поверх листа).
     private fun startSheetThenBsdFlow() {
         zOrderHost().openSheetThenRaiseDialog()
     }
 
-    // Кнопка 4: показываем BSD, через 5с САМ фрагмент поднимает nav3-лист в своём ComposeView (без Activity).
-    // Проверяем z-order, когда in-tree Compose-лист хостит фрагмент, а не Activity.
+    // Кнопка 4: показываем BSD, через 5с САМ фрагмент поднимает XBS-лист (в своём окне) из своего ComposeView,
+    // без Activity. Проверяем z-order, когда windowed-лист хостит фрагмент, а не Activity.
     private fun startBsdThenFragmentHostedSheetFlow() {
         SampleBottomSheetDialogFragment().show(parentFragmentManager, BSD_TAG)
         flowHandler.postDelayed({ openFragmentHostedSheet() }, FLOW_DELAY_MS)
     }
 
-    // Кнопка 5: показываем BSD, через 5с просим Activity поднять лист в СОБСТВЕННОМ окне (hostInWindow).
-    // Гипотеза: лист-окно добавлено в WindowManager позже окна BSD → ляжет ПОВЕРХ BSD.
+    // Кнопка 5: показываем BSD, через 5с просим Activity поднять XBS-лист (красный) в собственном окне —
+    // тот же windowed-хелпер, другой цвет. Окно листа добавлено позже окна BSD → ляжет ПОВЕРХ BSD.
     private fun startBsdThenWindowHostedSheetFlow() {
         SampleBottomSheetDialogFragment().show(parentFragmentManager, BSD_TAG)
-        flowHandler.postDelayed({ zOrderHost().openWindowHostedSheet() }, FLOW_DELAY_MS)
+        flowHandler.postDelayed({ zOrderHost().openWindowSheet() }, FLOW_DELAY_MS)
     }
 
     // Кнопка 8: динамический цикл top-level окон «кто сверху — тот, кого добавили позже».
@@ -167,31 +162,26 @@ class HostFragment : Fragment(), SheetOverlayDialogRaiser {
         SampleBottomSheetDialogFragment().show(parentFragmentManager, BSD_TAG)
     }
 
-    // Лениво добавляем ComposeView поверх кнопок и пушим лист в fragment-scoped бэкстек. onSheetGone снимает
-    // ComposeView, когда лист закрыт (post — чтобы удалить вью не изнутри его же композиции).
+    // Лениво добавляем ComposeView поверх кнопок; он поднимает XBS-лист в собственном окне (WindowedXBottomSheet).
+    // onSheetGone снимает ComposeView, когда лист закрыт (post — чтобы удалить вью не изнутри его же композиции).
     private fun openFragmentHostedSheet() {
-        if (sheetComposeView == null) {
-            val composeView = ComposeView(requireContext())
-            composeView.setContent {
-                LabTheme {
-                    FragmentHostedSheetRoot(
-                        backStack = sheetBackStack,
-                        onSheetGone = { composeView.post { removeSheetComposeView(composeView) } },
-                    )
-                }
+        if (sheetComposeView != null) return
+        val composeView = ComposeView(requireContext())
+        composeView.setContent {
+            LabTheme {
+                FragmentHostedSheetRoot(
+                    onSheetGone = { composeView.post { removeSheetComposeView(composeView) } },
+                )
             }
-            sheetComposeView = composeView
-            rootContainer.addView(
-                composeView,
-                FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                ),
-            )
         }
-        if (sheetBackStack.lastOrNull() !is Nav3SheetRoute) {
-            sheetBackStack.add(Nav3SheetRoute)
-        }
+        sheetComposeView = composeView
+        rootContainer.addView(
+            composeView,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
     }
 
     private fun removeSheetComposeView(view: ComposeView) {

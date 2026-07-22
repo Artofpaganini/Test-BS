@@ -32,8 +32,12 @@ app/src/main/java/
                                        #   (единый LAUNCHER: развилка «Z-Order лаба» / «XBS Demo»)
 ```
 
-Не путать: в этом же модуле живут `com.alva.*` (порт AlvaBottomSheet) и `com.zorderlab.*`
-(z-order-лаба, кнопки 1–8) — это ДРУГИЕ эксперименты, к XBottomSheet отношения не имеют, не трогать.
+Не путать компонент с лабой: `com.zorderlab.*` (z-order-лаба, кнопки 1–8) — отдельный эксперимент;
+он ИСПОЛЬЗУЕТ XBottomSheet, но не является его частью. Порт `com.alva.*` (AlvaBottomSheet + nav3-сцены,
+z-order.Alva-эксперимент) УДАЛЁН: лаба переведена напрямую на XBottomSheet (лист управляется
+`XBottomSheetState.show/hide`, как в demo). Оконный режим листа даёт обёртка уровня лабы
+`com.zorderlab.WindowedXBottomSheet` (full-screen прозрачный Dialog) — сам компонент XBS окна не имеет
+и не получит (anti-scope). При правках компонента лабу не трогать, и наоборот.
 
 ## API (контракт §3 спеки + расширения юзера + config-раунд, ПЕРЕСМОТРЕНО)
 
