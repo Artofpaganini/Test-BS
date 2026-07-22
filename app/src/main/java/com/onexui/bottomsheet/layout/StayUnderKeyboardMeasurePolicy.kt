@@ -26,6 +26,7 @@ internal class StayUnderKeyboardMeasurePolicy(
         constraints: Constraints,
     ): MeasureResult {
         val width = constraints.maxWidth
+        // IME/navBar читаем в layout-фазе: инвалидация measure узла при их смене, без рекомпозиции.
         val navBarPx = navBarState.value
         val keyboardHeightPx = keyboardState.value.let { liftState ->
             if (liftState.isKeyboardVisible) liftState.keyboardHeight.roundToInt() else 0

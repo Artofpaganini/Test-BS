@@ -50,7 +50,7 @@ internal class XBottomSheetState internal constructor(
     var anchors: List<XSheetAnchor> by mutableStateOf(anchors)
         private set
 
-    /** Меняет набор якорей той же DSL-грамматикой, что и билдер (`"half" at 0.5f`). */
+    /** Меняет набор якорей той же DSL-грамматикой, что и билдер (`"half" at 0.5f`); поле с private set — снаружи якорь не создать (internal constructor). */
     fun anchors(configure: XSheetAnchorsBuilder.() -> Unit) {
         anchors = XSheetAnchorsBuilder().apply(configure).build()
     }
@@ -140,12 +140,15 @@ internal class XBottomSheetState internal constructor(
         }
         val loaderMetrics = metrics
         isLoading = false
+        // openTarget считаем по РЕАЛЬНОМУ контенту, не по Loader-метрикам: ждём первый ре-замер (ссылка != loaderMetrics).
         // На таймаут (measure заморожен на фоне) stale-метрики не берём — ждём реальный ре-замер без лимита.
         val measured = withTimeoutOrNull(REMEASURE_TIMEOUT_MS.milliseconds) {
             awaitContentMetrics(loaderMetrics)
         } ?: awaitContentMetrics(loaderMetrics)
         // hide() мог прилететь за время ожидания ре-замера.
         if (!isVisible) return
+        // Лист выходит из Loading в рест-стейт. Если клавиатура уже открыта — тот же авто-FullScreen, что и onImeShown
+        // (иначе не-FullScreen лист поднялся бы на полную высоту IME и верх уехал бы за экран).
         val target = measured.openTarget(skipCollapsed)
         if (shouldPromoteForIme(target, measured)) {
             imePromotedFrom = target
@@ -243,6 +246,7 @@ internal class XBottomSheetState internal constructor(
     /** Снап высоты к якорю текущего стейта без анимации (поворот/resize). Поверх бегущей анимации не снапает. */
     internal suspend fun snapToCurrentAnchor() {
         val measured = metrics ?: return
+        // offset.isRunning: не снапаем поверх бегущей анимации (settle/show) — snapTo прервал бы её (мьютекс Animatable).
         if (!isVisible || offset.isRunning) return
         offset.snapTo(measured.anchorPx(currentValue, skipCollapsed).toFloat())
     }
@@ -257,6 +261,8 @@ internal class XBottomSheetState internal constructor(
         contentHeightPx: Int,
         loadingSheetHeightPx: Int,
     ) {
+        // Зовётся из measure на КАЖДОМ пассе (кадре драга/settle) — сравниваем примитивы до аллокации, чтобы не
+        // писать равный SheetMetrics (иначе snapshot грязнится каждый layout-пасс).
         val current = metrics
         if (current != null &&
             current.screenHeightPx == screenHeightPx &&
