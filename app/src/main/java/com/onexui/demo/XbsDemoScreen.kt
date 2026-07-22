@@ -89,6 +89,7 @@ private enum class DemoCase(val label: String) {
     R("(r) Кастомный якорь 50% (свайп: peek → 50% → full)"),
     T("(t) AdditionalTop + короткий контент (wrap)"),
     U("(u) Loading + поиск: IME во время Loading"),
+    V("(v) predictive back — onBackPress=true"),
 }
 
 private val SPORTS: List<String> = listOf(
@@ -187,6 +188,7 @@ private fun XbsCaseHost(case: DemoCase, onClose: () -> Unit) {
         DemoCase.R -> CaseCustomAnchor(onClose)
         DemoCase.T -> CaseAdditionalTopWrap(onClose)
         DemoCase.U -> CaseLoadingImeSearch(onClose)
+        DemoCase.V -> CasePredictiveBack(onClose)
     }
 }
 
@@ -622,6 +624,22 @@ private fun CaseLoadingImeSearch(onClose: () -> Unit) {
         },
     ) {
         SportLazyList(filtered)
+    }
+}
+
+// (v) predictive back: dismiss.onBackPress=true → back-жест (Android 14+ gesture nav) визуально двигает лист за
+// прогрессом. Кнопочный back и API<34 закрывают мгновенно как раньше.
+@Composable
+private fun CasePredictiveBack(onClose: () -> Unit) {
+    val state = rememberXBottomSheetState()
+    LaunchedEffect(Unit) { state.show() }
+    XBottomSheet(
+        state = state,
+        onDismissRequest = { state.hide(); onClose() },
+        config = rememberXBottomSheetConfig { dismiss { onBackPress = true } },
+        top = { PresetTitle("Predictive back") },
+    ) {
+        PresetBodyText("dismiss.onBackPress = true: back-жест (Android 14+) визуально двигает лист за пальцем. Отпустить — лист закрывается; отменить — возвращается на место.")
     }
 }
 

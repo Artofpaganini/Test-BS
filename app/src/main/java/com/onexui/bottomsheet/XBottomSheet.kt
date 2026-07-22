@@ -1,6 +1,6 @@
 package com.onexui.bottomsheet
 
-import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
@@ -20,6 +20,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -40,6 +41,7 @@ import com.onexui.bottomsheet.observe.ObserveSheetState
 import com.onexui.bottomsheet.presets.PresetLoader
 import com.onexui.bottomsheet.state.SheetValue
 import com.onexui.bottomsheet.state.XBottomSheetState
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.launch
 import org.xplatform.uikit.compose.modifier.keyboard.lift.rememberKeyboardLiftState
 
@@ -110,9 +112,21 @@ internal fun XBottomSheet(
         keyboardState = keyboardState,
         onSheetHidden = { sheetScope.hideKeyboard() },
     )
-    // Back-press закрывает лист при dismiss.onBackPress; дефолт false → BackHandler(enabled=false) пропускает
-    // событие хосту/Activity (1:1).
-    BackHandler(enabled = state.isVisible && config.dismiss.onBackPress) { state.onDismissRequest() }
+    // Back-press закрывает лист при dismiss.onBackPress; дефолт false → PredictiveBackHandler(enabled=false)
+    // пропускает событие хосту/Activity (1:1). Predictive-жест (Android 14+) двигает лист за прогрессом через
+    // backShift (отдельный визуальный слой): отмена возвращает к 0, успешный back — тот же dismiss + сброс сдвига.
+    val backShift = remember { Animatable(0f) }
+    val predictiveBackMaxShiftPx = with(density) { config.predictiveBackMaxShift.toPx() }
+    PredictiveBackHandler(enabled = state.isVisible && config.dismiss.onBackPress) { progress ->
+        try {
+            progress.collect { backEvent -> backShift.snapTo(backEvent.progress * predictiveBackMaxShiftPx) }
+            state.onDismissRequest()
+            backShift.snapTo(0f)
+        } catch (exception: CancellationException) {
+            backShift.animateTo(0f, NativeSheetSpring)
+            throw exception
+        }
+    }
     // Поворот/resize: снап высоты к якорю (one-shot по размерам, не snapshotFlow — иначе пере-подписал бы коллекторы).
     LaunchedEffect(state, screenHeightPx, statusBarPx) { state.snapToCurrentAnchor() }
 
@@ -177,7 +191,12 @@ internal fun XBottomSheet(
             top = top?.let { slot -> @Composable { sheetScope.slot() } },
             bottom = bottom?.let { slot -> @Composable { sheetScope.slot() } },
             middle = { if (state.isLoading) sheetScope.PresetLoader() else sheetScope.middle() },
-            modifier = Modifier.align(Alignment.BottomCenter).then(widthModifier),
+            // Predictive-back-сдвиг листа: backShift.value читается в draw-фазе (лямбда graphicsLayer), скрим —
+            // отдельный узел выше, не двигается; AdditionalTop-карточка внутри контейнера едет вместе с листом.
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .then(widthModifier)
+                .graphicsLayer { translationY = backShift.value },
         )
     }
 }
