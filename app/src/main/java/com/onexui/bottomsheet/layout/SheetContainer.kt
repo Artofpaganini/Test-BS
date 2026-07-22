@@ -11,10 +11,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.unit.Constraints
-import com.onexui.bottomsheet.XBottomSheetDefaults
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
 import com.onexui.bottomsheet.config.AdditionalTopConfig
 import com.onexui.bottomsheet.config.BottomKeyboardBehavior
 import com.onexui.bottomsheet.gesture.SheetNestedScrollConnection
@@ -33,9 +35,12 @@ internal fun SheetContainer(
     insets: SheetInsets,
     overlayBackground: Boolean,
     dragHandle: DragHandleStyle?,
+    shape: Shape,
     sheetBackgroundColor: Color,
     handleThemeColor: Color,
     handleStaticColor: Color,
+    dragHandleTopPadding: Dp,
+    dragHandleSize: DpSize,
     interactionsEnabled: Boolean,
     nestedScrollConnection: SheetNestedScrollConnection,
     keyboardState: State<KeyboardLiftState>,
@@ -43,6 +48,7 @@ internal fun SheetContainer(
     bottomKeyboardBehavior: BottomKeyboardBehavior,
     additionalTopFraction: Animatable<Float, AnimationVector1D>,
     additionalTopConfig: AdditionalTopConfig,
+    additionalTopOverlap: Dp,
     additionalTop: (@Composable () -> Unit)?,
     top: (@Composable () -> Unit)?,
     bottom: (@Composable () -> Unit)?,
@@ -50,7 +56,7 @@ internal fun SheetContainer(
     modifier: Modifier = Modifier,
 ) {
     val ceilingPx = (insets.screenHeightPx - insets.statusBarPx).coerceAtLeast(0)
-    val shadowModifier = if (!overlayBackground) Modifier.softSheetShadow(XBottomSheetDefaults.Shape) else Modifier
+    val shadowModifier = if (!overlayBackground) Modifier.softSheetShadow(shape) else Modifier
     val keyboardAdjustmentModifier = if (!isFullScreen) {
         Modifier.withAdjustmentForKeyboard(keyboardState = keyboardState)
     } else {
@@ -60,11 +66,13 @@ internal fun SheetContainer(
     @Composable
     fun sheetBodySlot(fillHeight: Boolean) {
         SheetBody(
-            state = state,
             dragHandle = dragHandle,
+            shape = shape,
             sheetBackgroundColor = sheetBackgroundColor,
             handleThemeColor = handleThemeColor,
             handleStaticColor = handleStaticColor,
+            dragHandleTopPadding = dragHandleTopPadding,
+            dragHandleSize = dragHandleSize,
             keyboardState = keyboardState,
             isFullScreen = isFullScreen,
             bottomKeyboardBehavior = bottomKeyboardBehavior,
@@ -124,7 +132,7 @@ internal fun SheetContainer(
         // высота карточки = fraction × (natural − overlap), fraction читается ЗДЕСЬ, в measure (deferred,
         // синхронно с sheetHeight, без догоняющей пружины). Карточка кладётся раньше surface → surface поверх
         // (её низ overlap утоплен). Лист bottom-aligned → карточка растёт вверх.
-        val overlapPx = XBottomSheetDefaults.AdditionalTopOverlap.roundToPx()
+        val overlapPx = additionalTopOverlap.roundToPx()
         val cardMeasurable = additionalTopBody?.let { subcompose(AdditionalTopCardSlot, it).firstOrNull() }
         val cardVisibleHeight = if (cardMeasurable != null) {
             val cardNatural = cardMeasurable.maxIntrinsicHeight(width)

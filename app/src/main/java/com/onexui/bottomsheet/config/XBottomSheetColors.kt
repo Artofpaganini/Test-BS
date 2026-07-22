@@ -5,9 +5,12 @@ import androidx.compose.ui.graphics.Color
 
 // Цвета конфигурируемы; Unspecified → дефолт спеки/темы (резолв в композиции корня — см. XBottomSheetColorsResolve).
 @Immutable
-internal data class XBottomSheetColors(
+internal class XBottomSheetColors(
     val scrim: Color,
     val sheetBackground: Color,
     val handleTheme: Color,
     val handleStatic: Color,
-)
+) {
+    internal val specScrim: Color = Color.Black.copy(alpha = 0.40f)
+    internal val specHandleStatic: Color = Color.White.copy(alpha = 0.40f)
+}

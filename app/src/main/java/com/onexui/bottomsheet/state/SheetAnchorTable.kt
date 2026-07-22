@@ -1,6 +1,5 @@
 package com.onexui.bottomsheet.state
 
-import com.onexui.bottomsheet.XBottomSheetDefaults
 import kotlin.math.abs
 
 // Якорная математика, вынесенная из стейт-машины (порт settle/floor/ceiling/isAtRest 1:1). restEntries —
@@ -15,7 +14,12 @@ internal class SheetAnchorTable internal constructor(private val restEntries: Li
 
     // Порт settle-выбора: fling → якорь по направлению, иначе ближайший. Hidden(0) — только при isDismissAllowed
     // и отсутствии rest-якоря на 0px (семантика distinctBy). null — если кандидатов нет (метрики без якорей).
-    fun settleTarget(offsetPx: Float, velocityPxPerSec: Float, isDismissAllowed: Boolean): SheetValue? {
+    fun settleTarget(
+        offsetPx: Float,
+        velocityPxPerSec: Float,
+        isDismissAllowed: Boolean,
+        flingVelocityThresholdPxPerSec: Float,
+    ): SheetValue? {
         val candidates = if (isDismissAllowed) {
             (restEntries + AnchorEntry(SheetValue.Hidden, 0))
                 .distinctBy { entry -> entry.anchorPx }
@@ -25,9 +29,9 @@ internal class SheetAnchorTable internal constructor(private val restEntries: Li
         }
         if (candidates.isEmpty()) return null
         val chosen = when {
-            velocityPxPerSec < -XBottomSheetDefaults.FlingVelocityThresholdPxPerSec ->
+            velocityPxPerSec < -flingVelocityThresholdPxPerSec ->
                 candidates.firstOrNull { entry -> entry.anchorPx > offsetPx + ANCHOR_EPS } ?: candidates.last()
-            velocityPxPerSec > XBottomSheetDefaults.FlingVelocityThresholdPxPerSec ->
+            velocityPxPerSec > flingVelocityThresholdPxPerSec ->
                 candidates.lastOrNull { entry -> entry.anchorPx < offsetPx - ANCHOR_EPS } ?: candidates.first()
             else ->
                 candidates.minByOrNull { entry -> abs(entry.anchorPx - offsetPx) } ?: candidates.first()

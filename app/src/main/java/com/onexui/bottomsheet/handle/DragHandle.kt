@@ -8,7 +8,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import com.onexui.bottomsheet.XBottomSheetDefaults
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
 
 // Read-only маркер, позиционируется вызывающим (align TopCenter), вёрстку не двигает.
 @Composable
@@ -16,6 +17,8 @@ internal fun DragHandle(
     style: DragHandleStyle,
     themeColor: Color,
     staticColor: Color,
+    topPadding: Dp,
+    size: DpSize,
     modifier: Modifier = Modifier,
 ) {
     val color = when (style) {
@@ -24,10 +27,10 @@ internal fun DragHandle(
     }
     Box(
         modifier = modifier
-            .padding(top = XBottomSheetDefaults.DragHandleTopPadding)
+            .padding(top = topPadding)
             .size(
-                width = XBottomSheetDefaults.DragHandleSize.width,
-                height = XBottomSheetDefaults.DragHandleSize.height,
+                width = size.width,
+                height = size.height,
             )
             .background(color = color, shape = CircleShape),
     )

@@ -10,23 +10,26 @@ import androidx.compose.runtime.State
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
 import com.onexui.bottomsheet.config.BottomKeyboardBehavior
 import com.onexui.bottomsheet.handle.DragHandle
 import com.onexui.bottomsheet.handle.DragHandleStyle
-import com.onexui.bottomsheet.presets.PresetLoader
-import com.onexui.bottomsheet.state.XBottomSheetState
 import org.xplatform.uikit.compose.modifier.keyboard.lift.KeyboardLiftState
 
 // Тело листа: Surface(20/20/0/0) с top(sticky) / middle(scroll) / bottom(sticky). DragHandle рисуется поверх
 // (TopCenter) и вёрстку не двигает.
 @Composable
 internal fun SheetBody(
-    state: XBottomSheetState,
     dragHandle: DragHandleStyle?,
+    shape: Shape,
     sheetBackgroundColor: Color,
     handleThemeColor: Color,
     handleStaticColor: Color,
+    dragHandleTopPadding: Dp,
+    dragHandleSize: DpSize,
     keyboardState: State<KeyboardLiftState>,
     isFullScreen: Boolean,
     bottomKeyboardBehavior: BottomKeyboardBehavior,
@@ -41,18 +44,9 @@ internal fun SheetBody(
     // fillHeight (place): тело заполняет offset (фон на всю высоту, нет дыры снизу). !fillHeight (detect): wrap по контенту.
     val sizeModifier = if (fillHeight) Modifier.fillMaxSize() else Modifier.fillMaxWidth()
     // Middle без нашего verticalScroll — скролл предоставляет контент. weight(1f, fill=false): короткий контент
-    // wrap, ленивый/скролл заполняет. Loading → Loader.
-    val middleContent: @Composable () -> Unit = {
-        if (state.isLoading) {
-            PresetLoader()
-        } else {
-            middle()
-        }
-    }
-    // В detect тело wrap'ится (fillMaxWidth, без fillMaxHeight) — измеритель видит натуральную высоту контента;
-    // fillMaxSize сломал бы wrap-детект.
+    // wrap, ленивый/скролл заполняет.
     val sheetSurface: @Composable () -> Unit = {
-        SheetSurface(modifier = sizeModifier, backgroundColor = sheetBackgroundColor) {
+        SheetSurface(modifier = sizeModifier, shape = shape, backgroundColor = sheetBackgroundColor) {
             if (isBottomUnderKeyboardMode) {
                 // bottom прижат к нижней кромке и уходит ПОД клавиатуру (StayUnderKeyboardContent); top — над регионом.
                 Column(modifier = sizeModifier) {
@@ -62,7 +56,7 @@ internal fun SheetBody(
                             .fillMaxWidth(),
                         keyboardState = keyboardState,
                         navBarPx = navBarPx,
-                        middle = middleContent,
+                        middle = middle,
                         bottom = bottom,
                     )
                 }
@@ -74,7 +68,7 @@ internal fun SheetBody(
                     navBarPx = navBarPx,
                     fillHeight = fillHeight,
                     top = top,
-                    middle = middleContent,
+                    middle = middle,
                     bottom = bottom,
                 )
             }
@@ -93,6 +87,8 @@ internal fun SheetBody(
                 style = dragHandle,
                 themeColor = handleThemeColor,
                 staticColor = handleStaticColor,
+                topPadding = dragHandleTopPadding,
+                size = dragHandleSize,
                 modifier = Modifier.align(Alignment.TopCenter),
             )
         }

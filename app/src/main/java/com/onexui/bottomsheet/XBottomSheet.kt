@@ -37,6 +37,7 @@ import com.onexui.bottomsheet.layout.SheetContainer
 import com.onexui.bottomsheet.layout.SheetInsets
 import com.onexui.bottomsheet.layout.SheetScrim
 import com.onexui.bottomsheet.observe.ObserveSheetState
+import com.onexui.bottomsheet.presets.PresetLoader
 import com.onexui.bottomsheet.state.SheetValue
 import com.onexui.bottomsheet.state.XBottomSheetState
 import kotlinx.coroutines.launch
@@ -60,7 +61,7 @@ internal fun XBottomSheet(
     // не-suspend launcher'ом (см. SideEffect): скрим/settle/back/requestDismiss зовут его синхронно.
     val dismissScope = rememberCoroutineScope()
     val currentOnDismiss by rememberUpdatedState(onDismissRequest)
-    val sheetScope = remember(state) { XBottomSheetScopeImpl(state) }
+    val sheetScope = remember(state) { XBottomSheetScopeImpl(state, config.loadingSheetHeight) }
     // Размеры экрана из LocalWindowInfo.containerSize (px); при повороте обновляется сам.
     val containerSize = LocalWindowInfo.current.containerSize
     val screenHeightPx = containerSize.height
@@ -69,15 +70,15 @@ internal fun XBottomSheet(
     // navBar inset: фон Surface остаётся edge-to-edge под баром, контент паддится инсетом внутри (bottom над баром).
     val navBarPx = WindowInsets.navigationBars.getBottom(density)
     // Loading-якорь = 192dp + navBarPx: видимая зона Loader'а остаётся 192dp несмотря на nav-bar-паддинг внутри.
-    val loadingSheetHeightPx = with(density) { XBottomSheetDefaults.LoadingSheetHeight.roundToPx() } + navBarPx
-    val scrimFadeDistancePx = with(density) { XBottomSheetDefaults.ScrimFadeDistance.toPx() }
+    val loadingSheetHeightPx = with(density) { config.loadingSheetHeight.roundToPx() } + navBarPx
+    val scrimFadeDistancePx = with(density) { config.scrimFadeDistance.toPx() }
     // Цвета резолвятся в композиции корня (тема доступна): Unspecified → дефолт. Вниз идут готовые Color-примитивы.
     val scrimColor = config.colors.resolveScrim()
     val sheetBackgroundColor = config.colors.resolveSheetBackground()
     val handleThemeColor = config.colors.resolveHandleTheme()
     val handleStaticColor = config.colors.resolveHandleStatic()
-    val isWide = screenWidthDp >= XBottomSheetDefaults.WideScreenThreshold
-    val widthModifier = if (isWide) Modifier.width(XBottomSheetDefaults.MaxWidth) else Modifier.fillMaxWidth()
+    val isWide = screenWidthDp >= config.wideScreenThreshold
+    val widthModifier = if (isWide) Modifier.width(config.maxWidth) else Modifier.fillMaxWidth()
     // Единый источник состояния IME для авто-FullScreen и модификаторов подъёма/сжатия.
     val keyboardState = rememberKeyboardLiftState()
     // Жесты высоты отключены: dragHandle==null, Loading, ИЛИ открыта IME. derivedStateOf уведомляет читателей
@@ -119,6 +120,8 @@ internal fun XBottomSheet(
     // синхронно) + проброс IME-контроллеров в scope — всё в стейт/scope одним SideEffect'ом.
     SideEffect {
         state.dismissOnSwipeDown = config.dismiss.onSwipeDown
+        state.flingVelocityThresholdPxPerSec = config.flingVelocityThresholdPxPerSec
+        state.resistanceMaxPx = config.resistanceMaxPx
         state.onDismissRequest = { dismissScope.launch { currentOnDismiss() } }
         // Ссылка на live-состояние IME + конфиг-флаг для решения о промоушене (стейт читает их в shouldPromoteForIme,
         // без копий). alwaysFullScreenOnIme: StayUnderKeyboard + bottom → bottom доходит до нижней кромки под клавиатуру.
@@ -154,9 +157,12 @@ internal fun XBottomSheet(
             ),
             overlayBackground = config.overlayBackground,
             dragHandle = config.dragHandle,
+            shape = config.shape,
             sheetBackgroundColor = sheetBackgroundColor,
             handleThemeColor = handleThemeColor,
             handleStaticColor = handleStaticColor,
+            dragHandleTopPadding = config.dragHandleTopPadding,
+            dragHandleSize = config.dragHandleSize,
             interactionsEnabled = interactionsEnabled,
             nestedScrollConnection = nestedScrollConnection,
             keyboardState = keyboardState,
@@ -164,12 +170,13 @@ internal fun XBottomSheet(
             bottomKeyboardBehavior = config.keyboard.bottomBehavior,
             additionalTopFraction = additionalTopFraction,
             additionalTopConfig = config.additionalTop,
+            additionalTopOverlap = config.additionalTopOverlap,
             // Слоты биндятся к ОДНОМУ инстансу scope литералом в параметр (detect/place-копии тела получают тот же
             // sheetScope; requestDismiss из detect-копии недостижим — она не placed).
             additionalTop = additionalTop?.let { slot -> @Composable { sheetScope.slot() } },
             top = top?.let { slot -> @Composable { sheetScope.slot() } },
             bottom = bottom?.let { slot -> @Composable { sheetScope.slot() } },
-            middle = { sheetScope.middle() },
+            middle = { if (state.isLoading) sheetScope.PresetLoader() else sheetScope.middle() },
             modifier = Modifier.align(Alignment.BottomCenter).then(widthModifier),
         )
     }

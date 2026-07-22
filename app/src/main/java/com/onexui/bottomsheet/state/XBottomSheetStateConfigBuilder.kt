@@ -1,13 +1,12 @@
 package com.onexui.bottomsheet.state
 
-import com.onexui.bottomsheet.XBottomSheetDefaults
 import com.onexui.bottomsheet.config.XBottomSheetDsl
 
 @XBottomSheetDsl
 internal class XBottomSheetStateConfigBuilder {
     var skipCollapsed: Boolean = false
     var initialLoading: Boolean = false
-    var peekFraction: Float = XBottomSheetDefaults.PeekFraction
+    var peekFraction: Float = 2f / 3f
     private val anchorsBuilder = XSheetAnchorsBuilder()
 
     fun anchors(configure: XSheetAnchorsBuilder.() -> Unit) {

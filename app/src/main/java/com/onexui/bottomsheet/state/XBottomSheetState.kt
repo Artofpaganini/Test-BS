@@ -8,7 +8,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import com.onexui.bottomsheet.NativeSheetSpring
-import com.onexui.bottomsheet.XBottomSheetDefaults
 import com.onexui.bottomsheet.additionaltop.AdditionalTopState
 import com.onexui.bottomsheet.gesture.resistedOvershoot
 import kotlinx.coroutines.Job
@@ -217,6 +216,11 @@ internal class XBottomSheetState internal constructor(
     internal var dismissOnSwipeDown: Boolean = true
     internal var onDismissRequest: () -> Unit = {}
 
+    // Физика жестов из config (вайринг SideEffect'ом корня, тем же путём, что dismissOnSwipeDown). Нейтральный старт
+    // 0f — не дублируем источник: жесты физически невозможны до первой композиции корня, где вайринг уже произошёл.
+    internal var flingVelocityThresholdPxPerSec: Float = 0f
+    internal var resistanceMaxPx: Float = 0f
+
     internal fun enqueueDrag(deltaHeightPx: Float) {
         isDragging = true
         gestureCommands.trySend(GestureCommand.Drag(deltaHeightPx))
@@ -255,13 +259,13 @@ internal class XBottomSheetState internal constructor(
         // atTop — база maxHeight (rubber-band в статус-бар); иначе — верхний rest-якорь (overshoot тянет к maxHeight).
         val overshootBase = if (atTop) measured.maxHeightPx.toFloat() else table.highestRestAnchorPx.toFloat()
         val overshootCeiling =
-            if (atTop) (measured.maxHeightPx + XBottomSheetDefaults.ResistanceMaxPx) else measured.maxHeightPx.toFloat()
+            if (atTop) (measured.maxHeightPx + resistanceMaxPx) else measured.maxHeightPx.toFloat()
         // Overshoot — когда лист у/над верхним rest-якорем (не по currentValue): включает и драг из Collapsed.
         val inOvershoot = accumulatedOvershootPx > 0f ||
             (offset.value >= overshootBase - OVERSHOOT_ENTER_EPS_PX && deltaHeightPx > 0f)
         if (inOvershoot) {
             accumulatedOvershootPx = (accumulatedOvershootPx + deltaHeightPx).coerceAtLeast(0f)
-            val resisted = resistedOvershoot(accumulatedOvershootPx, XBottomSheetDefaults.ResistanceMaxPx)
+            val resisted = resistedOvershoot(accumulatedOvershootPx, resistanceMaxPx)
             offset.snapTo((overshootBase + resisted).coerceAtMost(overshootCeiling))
         } else {
             accumulatedOvershootPx = 0f
@@ -275,7 +279,7 @@ internal class XBottomSheetState internal constructor(
         accumulatedOvershootPx = 0f
         imePromotedFrom = null
         val table = anchorTable ?: return
-        val target = table.settleTarget(offset.value, velocity, dismissOnSwipeDown)
+        val target = table.settleTarget(offset.value, velocity, dismissOnSwipeDown, flingVelocityThresholdPxPerSec)
         when {
             target == null -> animateTo(currentValue)
             target == SheetValue.Hidden -> onDismissRequest()
