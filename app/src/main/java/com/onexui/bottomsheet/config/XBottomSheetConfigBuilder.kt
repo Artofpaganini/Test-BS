@@ -6,25 +6,26 @@ import com.onexui.bottomsheet.handle.DragHandleStyle
 internal class XBottomSheetConfigBuilder {
     var overlayBackground: Boolean = true
     var dragHandle: DragHandleStyle? = DragHandleStyle.Theme
-    private val additionalTopBuilder = AdditionalTopConfigBuilder()
-    private val dismissBuilder = DismissConfigBuilder()
-    private val keyboardBuilder = KeyboardConfigBuilder()
-    private val colorsBuilder = XBottomSheetColorsBuilder()
+    // internal для inline-групп; при переносе в public API xbet → @PublishedApi internal
+    internal val additionalTopBuilder = AdditionalTopConfigBuilder()
+    internal val dismissBuilder = DismissConfigBuilder()
+    internal val keyboardBuilder = KeyboardConfigBuilder()
+    internal val colorsBuilder = XBottomSheetColorsBuilder()
 
     // Повторные вызовы мёржатся (last-write-wins): переиспользуем один билдер группы.
-    fun additionalTop(configure: AdditionalTopConfigBuilder.() -> Unit) {
+    inline fun additionalTop(configure: AdditionalTopConfigBuilder.() -> Unit) {
         additionalTopBuilder.configure()
     }
 
-    fun dismiss(configure: DismissConfigBuilder.() -> Unit) {
+    inline fun dismiss(configure: DismissConfigBuilder.() -> Unit) {
         dismissBuilder.configure()
     }
 
-    fun keyboard(configure: KeyboardConfigBuilder.() -> Unit) {
+    inline fun keyboard(configure: KeyboardConfigBuilder.() -> Unit) {
         keyboardBuilder.configure()
     }
 
-    fun colors(configure: XBottomSheetColorsBuilder.() -> Unit) {
+    inline fun colors(configure: XBottomSheetColorsBuilder.() -> Unit) {
         colorsBuilder.configure()
     }
 

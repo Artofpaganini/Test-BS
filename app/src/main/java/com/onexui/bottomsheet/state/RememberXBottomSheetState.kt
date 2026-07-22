@@ -4,7 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.saveable.rememberSaveable
 
 @Composable
-internal fun rememberXBottomSheetState(
+internal inline fun rememberXBottomSheetState(
     configure: XBottomSheetStateConfigBuilder.() -> Unit = {},
 ): XBottomSheetState {
     val config = XBottomSheetStateConfigBuilder().apply(configure).build()

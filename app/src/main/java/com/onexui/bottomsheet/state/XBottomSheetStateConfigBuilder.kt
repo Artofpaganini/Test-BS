@@ -7,9 +7,10 @@ internal class XBottomSheetStateConfigBuilder {
     var skipCollapsed: Boolean = false
     var initialLoading: Boolean = false
     var peekFraction: Float = 2f / 3f
-    private val anchorsBuilder = XSheetAnchorsBuilder()
+    // internal для inline-групп; при переносе в public API xbet → @PublishedApi internal
+    internal val anchorsBuilder = XSheetAnchorsBuilder()
 
-    fun anchors(configure: XSheetAnchorsBuilder.() -> Unit) {
+    inline fun anchors(configure: XSheetAnchorsBuilder.() -> Unit) {
         anchorsBuilder.configure()
     }
 

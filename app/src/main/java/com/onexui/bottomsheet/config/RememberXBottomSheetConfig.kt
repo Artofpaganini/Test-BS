@@ -7,6 +7,6 @@ import androidx.compose.runtime.remember
 // идёт через Unspecified→резолв в корне (resolveScrim/…), НЕ через пересоздание конфига. rememberSaveable не нужен:
 // конфиг пересоздаётся из кода после process-death, сохранять нечего (стейт листа уже в Saver).
 @Composable
-internal fun rememberXBottomSheetConfig(
-    configure: XBottomSheetConfigBuilder.() -> Unit = {},
+internal inline fun rememberXBottomSheetConfig(
+    crossinline configure: XBottomSheetConfigBuilder.() -> Unit = {},
 ): XBottomSheetConfig = remember { XBottomSheetConfigBuilder().apply(configure).build() }
