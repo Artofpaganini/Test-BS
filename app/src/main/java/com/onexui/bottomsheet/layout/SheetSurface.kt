@@ -6,6 +6,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 
+/** Фон-потложка тела листа: Material Surface с заданными формой и цветом. */
 @Composable
 internal fun SheetSurface(
     modifier: Modifier,

@@ -10,8 +10,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.Layout
 import org.xplatform.uikit.compose.modifier.keyboard.lift.KeyboardLiftState
 
-// Middle + Bottom в режиме StayUnderKeyboard: middle кончается у верхней кромки IME (или у верха bottom без IME);
-// bottom прижат к нижней кромке региона и уходит ПОД клавиатуру при IME.
+/**
+ * Middle + Bottom в режиме StayUnderKeyboard: middle кончается у верхней кромке IME (или у верха bottom без IME),
+ * bottom прижат к нижней кромке региона и уходит ПОД клавиатуру при IME.
+ */
 @Composable
 internal fun StayUnderKeyboardContent(
     modifier: Modifier,
@@ -20,8 +22,7 @@ internal fun StayUnderKeyboardContent(
     middle: @Composable () -> Unit,
     bottom: @Composable () -> Unit,
 ) {
-    // Политика — один инстанс (remember без ключей); IME/navBar читаются в measure как State → реакция
-    // layout-фазная, без пересоздания политики.
+    // Политика — один инстанс (remember без ключей); IME/navBar читаются в measure как State (реакция без пересоздания).
     val navBarState = rememberUpdatedState(navBarPx)
     val measurePolicy = remember { StayUnderKeyboardMeasurePolicy(keyboardState, navBarState) }
     Layout(

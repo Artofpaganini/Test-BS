@@ -1,4 +1,4 @@
 package com.onexui.bottomsheet.handle
 
-// Static — белый alpha .40, не зависит от темы (для Additional Top / статичных фонов).
+/** Стиль хендла: Theme — цвет сепаратора темы; Static — белый alpha .40, не зависет от темы (для статичных фонов). */
 internal enum class DragHandleStyle { Theme, Static }

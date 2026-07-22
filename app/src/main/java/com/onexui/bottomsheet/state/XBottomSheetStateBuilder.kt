@@ -2,14 +2,17 @@ package com.onexui.bottomsheet.state
 
 import com.onexui.bottomsheet.config.XBottomSheetDsl
 
-// Начальная вариация живого стейта: билдер исполняется ОДИН раз (rememberXBottomSheetState), дальше поведение
-// меняется прямо на полях стейта. Правило «один файл = одна сущность» сохранено.
+/**
+ * DSL-билдер начальной вариации стейта: исполняется ОДИН раз (rememberXBottomSheetState), дальше поведени
+ * меняется прямо на живых полях стейта.
+ */
 @XBottomSheetDsl
 internal class XBottomSheetStateBuilder {
     var skipCollapsed: Boolean = false
     var initialLoading: Boolean = false
     var peekFraction: Float = 2f / 3f
-    // internal для inline-групп; при переносе в public API xbet → @PublishedApi internal
+
+    // internal для доступа из inline-групп; при переносе в public API xbet -> @PublishedApi internal.
     internal val anchorsBuilder = XSheetAnchorsBuilder()
 
     inline fun anchors(configure: XSheetAnchorsBuilder.() -> Unit) {

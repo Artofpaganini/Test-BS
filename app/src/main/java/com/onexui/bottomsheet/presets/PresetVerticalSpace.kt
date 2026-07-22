@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 
+/** Пресет: вертикальный отступ заданной высоы между частями тела. */
 @Composable
 internal fun PresetVerticalSpace(height: Dp) {
     Spacer(modifier = Modifier.height(height))

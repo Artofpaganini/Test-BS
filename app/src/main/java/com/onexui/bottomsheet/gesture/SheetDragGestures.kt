@@ -7,8 +7,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.onexui.bottomsheet.state.XBottomSheetState
 
-// Драг листа за неподвижные области (хендл / top / bottom); Middle — через nested-scroll. Знак: вниз (delta>0)
-// уменьшает высоту (enqueueDrag(-delta)). Драг/settle кладутся в FIFO-канал стейта.
+/**
+ * Драг листа за неподвижные области (хендл / top / bottom); Middle тянется через nested-scroll. Знак: вниз
+ * (delta>0) уменьшет высоту (enqueueDrag(-delta)). Драг/settle кладутся в FIFO-канал стейта.
+ */
 @Composable
 internal fun Modifier.sheetDrag(
     state: XBottomSheetState,

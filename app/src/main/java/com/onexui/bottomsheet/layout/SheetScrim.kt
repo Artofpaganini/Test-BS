@@ -10,9 +10,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import com.onexui.bottomsheet.state.XBottomSheetState
 
-// Полноэкранный scrim: тачи под листом гасятся ВСЕГДА (hit-таргет), затемнение опционально. Тап вне листа →
-// закрытие при dismissOnOutsideTap. Тапы по самому листу не долетают — тело гасит их своим no-op
-// detectTapGestures (up поглощается выше по z). Alpha разгоняется по offset листа.
+/**
+ * Полноэкраный scrim: тачи под листом гасятся ВСЕГДА (hit-таргет), затемнение опционально. Тап вне листа ->
+ * закрытие при dismissOnOutsideTap; тапы по самому листу сюда не долетают (гасит тело). Alpha разгоняется по offset листа.
+ */
 @Composable
 internal fun BoxScope.SheetScrim(
     state: XBottomSheetState,

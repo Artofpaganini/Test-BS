@@ -22,8 +22,22 @@ import org.xplatform.uikit.compose.modifier.keyboard.lift.KeyboardLiftState
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 
-// Стейт-машина высоты листа. Compose-state (mutableStateOf), не StateFlow. Стейт вычисляется по метрикам и
-// фактам (skipCollapsed / isLoading / кастомные якоря); режим wrap/fill — по замеру (SheetMetrics.isFillMode).
+/**
+ * Стейт-машина высоты листа и единый набор живых поведенческих ручек — одна сущность для разработчка
+ * (канон M3 SheetState: поведение живёт в стейте, а не в отдельном config-объекте). Значения — Compose-state
+ * (mutableStateOf), не StateFlow; вычисляются по метрикам замера и фактам. Режим wrap/fill определяется
+ * замером (SheetMetrics.isFillMode).
+ *
+ * Живые ручки (skipCollapsed/peekFraction/anchors) меняются прямо в композиции: покоящийся лист доезжает к
+ * новому якорю сам (onLiveConfigChanged), присвоение равного значения — no-op.
+ *
+ * @property skipCollapsed есть ли промежуточный Collapsed-якорь; false — открываем сразу в раскрытый стейт.
+ * @property peekFraction доля высоты экрана для Collapsed-якоря (0..1).
+ * @property anchors кастомные rest-якоря fill-режима (DSL `"half" at 0.5f`).
+ * @property currentValue текущий логический стейт высоты; пишется только внутри стейта.
+ * @property isLoading идёт ли загрузка контента (в Middle — Loader вместо контента).
+ * @property initialLoading стартовое значение isLoading, заданное билдером.
+ */
 @Stable
 internal class XBottomSheetState internal constructor(
     skipCollapsed: Boolean,
@@ -31,16 +45,12 @@ internal class XBottomSheetState internal constructor(
     peekFraction: Float,
     anchors: List<XSheetAnchor>,
 ) {
-    // Живые поведенческие ручки: билдер задаёт начальную вариацию, дальше меняются прямо в композиции —
-    // покоящийся лист доезжает к новому якорю сам (см. onLiveConfigChanged). Канон M3 SheetState: поведение
-    // живёт в стейте, а не в отдельном config-объекте.
     var skipCollapsed: Boolean by mutableStateOf(skipCollapsed)
     var peekFraction: Float by mutableStateOf(peekFraction)
     var anchors: List<XSheetAnchor> by mutableStateOf(anchors)
         private set
 
-    // Смена якорей той же DSL-грамматикой, что и в билдере. private set у поля: XSheetAnchor с internal
-    // constructor создаётся только этим DSL, руками список не собрать.
+    /** Меняет набор якорей той же DSL-грамматикой, что и билдер (`"half" at 0.5f`). */
     fun anchors(configure: XSheetAnchorsBuilder.() -> Unit) {
         anchors = XSheetAnchorsBuilder().apply(configure).build()
     }
@@ -56,96 +66,105 @@ internal class XBottomSheetState internal constructor(
     internal var metrics by mutableStateOf<SheetMetrics?>(null)
         private set
 
-    // Текущая высота листа, px. Единственный писатель — suspend-методы стейта (drag = snapTo, анимация =
-    // animateTo); читается в measure-лямбде измерителя (deferred), без рекомпозиций.
+    /**
+     * Текущая высота листа, px. Пишут только suspend-методы стейта (drag -> snapTo, анимация -> animateTo),
+     * читается в measure-фазе измерителя (deferred) — без рекомпозиций.
+     */
     internal val offset = Animatable(0f)
 
     internal var isDragging by mutableStateOf(false)
 
     private var accumulatedOvershootPx = 0f
 
-    // Якорная таблица (rest-якоря + settle-математика), пересчёт только в updateMetrics. null — пока нет метрик.
+    /** Якорная таблица (rest-якоря + settle-математика); пересчитывается только в updateMetrics. null — пока нет метрик. */
     private var anchorTable: SheetAnchorTable? = null
 
-    // Рест-стейт до авто-промоушена в FullScreen из-за IME: при скрытии клавиатуры откатываемся к нему.
+    /** Рест-стейт до авто-промоушена в FullScreen из-за IME: при скрытии клавиатуры откатываемся к нему. */
     private var imePromotedFrom: SheetValue? = null
 
-    // Единственные источники правды для решения о промоушене (без копий-снапшотов): keyboardState — live-состояние
-    // IME (xbet KeyboardLiftState); alwaysFullScreenOnIme — конфиг-флаг (StayUnderKeyboard + bottom). Оба вписываются
-    // SideEffect'ом корня тем же путём, что dismissOnSwipeDown/onDismissRequest.
+    /**
+     * Live-состояние IME (xbet KeyboardLiftState) — читается напрямую в shouldPromoteForIme, без копий-снапшотов.
+     * Вписывается SideEffect'ом корня, как dismissOnSwipeDown.
+     */
     internal var keyboardState: State<KeyboardLiftState>? = null
+
+    /** Конфиг-флаг StayUnderKeyboard + bottom-слот: bottom уходит под клавиатуру -> лист форсим в FullScreen. */
     internal var alwaysFullScreenOnIme: Boolean = false
 
     val isVisible: Boolean get() = currentValue != SheetValue.Hidden
 
-    // Аддитивный факт бегущей анимации высоты (snapshot-state offset.isRunning; наблюдаемо из snapshotFlow).
+    /** Идёт ли анимация высоты (snapshot-state offset.isRunning, наблюдаемо из snapshotFlow). */
     val isAnimating: Boolean get() = offset.isRunning
 
     private suspend fun awaitMetrics(): SheetMetrics =
         metrics ?: snapshotFlow { metrics }.filterNotNull().first()
 
+    /** Открывает лист (если ещё не открыт): в Loading — к Loader-якорю, иначе к openTarget по замеру. */
     suspend fun show() {
-        // Уже открыт (в т.ч. восстановлен из Saver) — не переоткрываем: иначе анимация к openTarget сбросила бы
-        // стейт. Высоту к якорю снапнет snapToCurrentAnchor.
+        // Уже открыт (в т.ч. восстановлен из Saver) — не переоткрываем: анимация к openTarget сбросила бы стейт.
+        // Высоту к якорю снапнет snapToCurrentAnchor.
         if (isVisible) return
         val measured = awaitMetrics()
         animateTo(if (isLoading) SheetValue.Loading else measured.openTarget(skipCollapsed))
     }
 
-    // Восстановление из Saver. offset снапнется к якорю с приходом метрик (snapToCurrentAnchor).
+    /** Восстановление из Saver. offset снапнется к якорю с приходом метрик (snapToCurrentAnchor). */
     internal fun restore(value: SheetValue, isLoadingSaved: Boolean, additionalTop: AdditionalTopState) {
         currentValue = value
         isLoading = isLoadingSaved
         additionalTopState = additionalTop
     }
 
+    /** Раскрывает лист из Collapsed в expandTarget. */
     suspend fun expand() {
         val measured = metrics ?: return
         imePromotedFrom = null
         if (currentValue == SheetValue.Collapsed) animateTo(measured.expandTarget())
     }
 
+    /** Закрывает лист (анимация к Hidden). */
     suspend fun hide() {
         animateTo(SheetValue.Hidden)
     }
 
+    /**
+     * Снимает Loading и доводит лист до рест-стейта по РЕАЛЬНОМУ контенту (ждёт ре-замер после снятия isLoading).
+     * Если IME уже открыта — тот же авто-FullScreen, что и onImeShown (иначе верх листа уехал бы за экран).
+     * Закрытый лист не переоткрывает.
+     */
     suspend fun markContentReady() {
-        // Лист закрыли во время Loading — не переоткрываем: снимаем Loading и выходим (иначе openTarget поднял
-        // бы закрытый лист сам по себе).
+        // Закрыли во время Loading: снимаем флаг и выходим, иначе openTarget поднял бы закрытый лист.
         if (!isVisible) {
             isLoading = false
             return
         }
         val loaderMetrics = metrics
         isLoading = false
-        // openTarget по РЕАЛЬНОМУ контенту, не по Loader-метрикам: ждём первый инстанс метрик после снятия
-        // isLoading (ссылка != loaderMetrics). На таймаут (measure заморожен на фоне) stale-метрики не
-        // принимаем — ждём реальные без ограничения (реанимируются на foreground).
+        // На таймаут (measure заморожен на фоне) stale-метрики не берём — ждём реальный ре-замер без лимита.
         val measured = withTimeoutOrNull(REMEASURE_TIMEOUT_MS.milliseconds) {
             awaitContentMetrics(loaderMetrics)
         } ?: awaitContentMetrics(loaderMetrics)
-        // hide() мог прилететь за время ожидания ре-замера — повторная проверка перед анимацией.
+        // hide() мог прилететь за время ожидания ре-замера.
         if (!isVisible) return
-        // Лист приходит из Loading в рест-стейт. Если клавиатура уже открыта — применяем тот же авто-FullScreen,
-        // что и onImeShown (иначе не-FullScreen лист поднимется withAdjustmentForKeyboard на полную высоту IME и
-        // верх уедет за экран). onImeShown при currentValue=Loading промоушен не делает (Loading вне promotable).
         val target = measured.openTarget(skipCollapsed)
         if (shouldPromoteForIme(target, measured)) {
             imePromotedFrom = target
             animateTo(SheetValue.ExpandedFullScreen)
         } else {
-            // Приходим в естественный рест-стейт (в т.ч. откат промоушена Loading→FullScreen, если контент влезает
-            // с лифтом): сбрасываем imePromotedFrom, чтобы скрытие IME не откатывало обратно к Loading.
+            // Сброс промоушена: скрытие IME не должно откатывать к Loading.
             imePromotedFrom = null
             animateTo(target)
         }
     }
 
+    /** Ждёт первый инстанс метрик, отличный от Loader-метрик по ссылке — то есть ре-замер по реальному контенту. */
     private suspend fun awaitContentMetrics(loaderMetrics: SheetMetrics?): SheetMetrics =
         snapshotFlow { metrics }.filterNotNull().first { remeasured -> remeasured !== loaderMetrics }
 
-    // Контент изменился (рост/подгрузка): высота следует за якорем. skipCollapsed+Content и контент заполнил
-    // экран (isFillMode) → авто-FullScreen. В Loading — no-op (высоту ведут show/markContentReady).
+    /**
+     * Контент вырос/подгрузился: высота следует за текущим якорем. skipCollapsed+Content, заполнивший экран
+     * (isFillMode) -> авто-FullScreen. В Loading — no-op (высоту ведут show/markContentReady).
+     */
     internal suspend fun onContentRemeasured() {
         val measured = metrics ?: return
         if (!isVisible || currentValue == SheetValue.Loading) return
@@ -156,14 +175,14 @@ internal class XBottomSheetState internal constructor(
         }
     }
 
-    // Живые поведенческие поля (skipCollapsed/peekFraction/anchors) сменились в композиции: пере-резолвим метрики и
-    // якорную таблицу под новые значения и, если лист в покое (виден, не грузится, палец не тянет), доводим высоту к
-    // пере-резолвленному якорю сразу — не дожидаясь жеста. updateMetrics при неизменных размерах рано выходит и
-    // держал бы старый peekFraction/anchors в метриках, поэтому copy здесь обязателен. Гонки нет: и updateMetrics
-    // (measure), и этот вызов идут на main. Идёт настоящая gesture-анимация — animateTo мягко перехватит её (тот же
-    // мьютекс Animatable, что у onContentRemeasured); закрытый лист/Loading оставляем как есть.
+    /**
+     * Живые поля (skipCollapsed/peekFraction/anchors) сменились в композиции: пере-резолвим метрики и якорную
+     * таблицу под новые значения; если лист в покое (виден, не грузится, палец не тянет) — доводим высоту к новому
+     * якорю сразу, не дожидаясь жеста. Закрытый лист/Loading оставляем как есть.
+     */
     internal suspend fun onLiveConfigChanged() {
         val current = metrics ?: return
+        // copy обязателен: updateMetrics при неизменных размерах рано выходит и держал бы старый peekFraction/anchors.
         val rebuilt = current.copy(peekFraction = peekFraction, customAnchors = anchors)
         metrics = rebuilt
         val table = rebuilt.toAnchorTable(skipCollapsed)
@@ -174,8 +193,10 @@ internal class XBottomSheetState internal constructor(
         offset.animateTo(rebuilt.anchorPx(target, skipCollapsed).toFloat(), NativeSheetSpring)
     }
 
-    // Текущее value валидно → оно же (доедем к его новому px). Custom(key), у которого ключ исчез из anchors →
-    // ближайший существующий rest-якорь по px (settleTarget с v=0, без dismiss), НЕ закрытие листа.
+    /**
+     * Цель для доводки после смены живых полей. Текущее value валидно -> оно же. Custom(key) с исчезнувшим из
+     * anchors ключом -> ближайший существующий rest-якорь (settleTarget v=0, без dismiss), НЕ закрытие листа.
+     */
     private fun resolveRestTargetAfterConfigChange(table: SheetAnchorTable): SheetValue {
         val value = currentValue
         if (value is SheetValue.Custom && anchors.none { anchor -> anchor.key == value.key }) {
@@ -185,15 +206,15 @@ internal class XBottomSheetState internal constructor(
         return value
     }
 
-    // Промоушен в FullScreen при видимой IME: не-FullScreen лист поднимается withAdjustmentForKeyboard на ПОЛНУЮ
-    // высоту клавиатуры (дамб-лифт), поэтому якорь + IME выше потолка → верх листа уехал бы за экран. В FullScreen
-    // подъёма нет (Middle сжимается). alwaysFullScreenOnIme — режим StayUnderKeyboard (bottom уходит под клавиатуру).
+    /**
+     * Нужно ли форсировать FullScreen при видимой IME. Не-FullScreen лист поднимается withAdjustmentForKeyboard
+     * на ПОЛНУЮ высоту клавиатуры (безусловный подъём), поэтому якорь + IME выше потолка -> верх уехал бы за экран.
+     * В FullScreen подъёма нет (Middle сжимается). alwaysFullScreenOnIme — режим StayUnderKeyboard.
+     */
     private fun shouldPromoteForIme(value: SheetValue, measured: SheetMetrics): Boolean {
         val ime = keyboardState?.value ?: return false
         if (!ime.isKeyboardVisible) return false
-        // Loading: лист 192dp у нижней кромки; ADJUSTMENT-лифт снапнул бы его на полную высоту IME мгновенно
-        // (пока клавиатура ещё анимируется) → «висение в воздухе». Сразу FullScreen — там лифта нет, а Loader
-        // сжимается withKeyboardShrink покадрово (WindowInsetsAnimationCallback), синхронно с клавиатурой.
+        // Loading: подъём швырнул бы Loader на полную высоту IME мгновенно; FullScreen сжимает его покадрово с клавиатурой.
         if (value == SheetValue.Loading) return true
         val promotable = value == SheetValue.Content || value == SheetValue.Collapsed ||
             value == SheetValue.ExpandedContent || value is SheetValue.Custom
@@ -202,6 +223,7 @@ internal class XBottomSheetState internal constructor(
             measured.anchorPx(value, skipCollapsed) + ime.keyboardHeight.roundToInt() > measured.maxHeightPx
     }
 
+    /** IME показалась: при нехватке места промоутим в FullScreen, запоминая рест-стейт для отката. */
     internal suspend fun onImeShown() {
         val measured = metrics ?: return
         if (!isVisible) return
@@ -211,27 +233,30 @@ internal class XBottomSheetState internal constructor(
         }
     }
 
+    /** IME скрылась: откат из авто-FullScreen к рест-стейту, запомненному при промоушене. */
     internal suspend fun onImeHidden() {
         val target = imePromotedFrom ?: return
         imePromotedFrom = null
         if (currentValue == SheetValue.ExpandedFullScreen) animateTo(target)
     }
 
+    /** Снап высоты к якорю текущего стейта без анимации (поворот/resize). Поверх бегущей анимации не снапает. */
     internal suspend fun snapToCurrentAnchor() {
         val measured = metrics ?: return
-        // offset.isRunning: не снапаем поверх бегущей анимации (settle/show) — snapTo прервал бы её (мьютекс Animatable).
         if (!isVisible || offset.isRunning) return
         offset.snapTo(measured.anchorPx(currentValue, skipCollapsed).toFloat())
     }
 
+    /**
+     * Пересобирает метрики и якорную таблицу по свежему замеру. Зовётся из measure на КАЖДОМ пассе, поэтому
+     * сравнивает примитивы до аллокации — равный SheetMetrics не пишем (иначе snapshot грязнится каждый layout-пасс).
+     */
     internal fun updateMetrics(
         screenHeightPx: Int,
         statusBarPx: Int,
         contentHeightPx: Int,
         loadingSheetHeightPx: Int,
     ) {
-        // updateMetrics зовётся из measure на КАЖДОМ пассе (кадре драга/settle) — сравниваем примитивы до
-        // аллокации, чтобы не писать равный SheetMetrics (иначе snapshot грязнится каждый layout-пасс).
         val current = metrics
         if (current != null &&
             current.screenHeightPx == screenHeightPx &&
@@ -253,27 +278,37 @@ internal class XBottomSheetState internal constructor(
         anchorTable = updated.toAnchorTable(skipCollapsed)
     }
 
+    /** FIFO-канал жестов (drag/settle): единственный вход, потребитель — processGestures. */
     private val gestureCommands = Channel<GestureCommand>(Channel.UNLIMITED)
 
+    /** Разрешён ли свайп-вниз-закрытие (settle добавляет Hidden-якорь на 0px). */
     internal var dismissOnSwipeDown: Boolean = true
+
+    /** Не-suspend launcher закрытия: скрим/settle/back/requestDismiss зовут синхронно. Вписывается SideEffect'ом корня. */
     internal var onDismissRequest: () -> Unit = {}
 
-    // Физика жестов из config (вайринг SideEffect'ом корня, тем же путём, что dismissOnSwipeDown). Нейтральный старт
-    // 0f — не дублируем источник: жесты физически невозможны до первой композиции корня, где вайринг уже произошёл.
+    /**
+     * Физика жестов из config, вписывается SideEffect'ом корня. Старт 0f не дублирует источник: жесты невозможны
+     * до первой композиции корня, где вайринг уже произошёл.
+     */
     internal var flingVelocityThresholdPxPerSec: Float = 0f
     internal var resistanceMaxPx: Float = 0f
 
+    /** Кладёт drag-дельту в FIFO-канал жестов и помечает лист тянущимся. */
     internal fun enqueueDrag(deltaHeightPx: Float) {
         isDragging = true
         gestureCommands.trySend(GestureCommand.Drag(deltaHeightPx))
     }
 
+    /** Кладёт settle (по скорости отпускания) в FIFO-канал жестов. */
     internal fun enqueueSettle(velocity: Float) {
         gestureCommands.trySend(GestureCommand.Settle(velocity))
     }
 
-    // Единственный потребитель FIFO-канала команд: применяет drag/settle по порядку. Сериализация против гонки
-    // drag↔settle (иначе прилетевший позже dragBy.snapTo отменил бы settle-анимацию возврата).
+    /**
+     * Единственный потребитель FIFO-канала: применяет drag/settle по порядку. Сериализация против гонки
+     * drag↔settle (иначе поздний dragBy.snapTo отменил бы settle-анимацию возврата).
+     */
     internal suspend fun processGestures(): Unit = coroutineScope {
         var settleJob: Job? = null
         for (command in gestureCommands) {
@@ -291,18 +326,20 @@ internal class XBottomSheetState internal constructor(
         }
     }
 
-    // Живой драг: двигаем высоту. Обычный драг ограничен верхним rest-якорем (и floor снизу); overshoot над
-    // ним — с сопротивлением (wrap → к потолку; fill/FullScreen → rubber-band в зону статус-бара, spring назад).
+    /**
+     * Живой драг высоты. Обычный ход ограничен верхним rest-якорем (и floor снизу); overshoot над ним — с
+     * сопротивлением (wrap -> к потолку; fill/FullScreen -> rubber-band в зону статус-бара, spring назад).
+     */
     private suspend fun dragBy(deltaHeightPx: Float) {
         val measured = metrics ?: return
         val table = anchorTable ?: return
         val floorPx = if (dismissOnSwipeDown) 0f else table.lowestRestAnchorPx.toFloat()
         val atTop = currentValue == SheetValue.ExpandedFullScreen
-        // atTop — база maxHeight (rubber-band в статус-бар); иначе — верхний rest-якорь (overshoot тянет к maxHeight).
+        // atTop — база maxHeight (rubber-band в статус-бар); иначе верхний rest-якорь.
         val overshootBase = if (atTop) measured.maxHeightPx.toFloat() else table.highestRestAnchorPx.toFloat()
         val overshootCeiling =
             if (atTop) (measured.maxHeightPx + resistanceMaxPx) else measured.maxHeightPx.toFloat()
-        // Overshoot — когда лист у/над верхним rest-якорем (не по currentValue): включает и драг из Collapsed.
+        // Overshoot по позиции, не по currentValue: срабатывает и при драге из Collapsed.
         val inOvershoot = accumulatedOvershootPx > 0f ||
             (offset.value >= overshootBase - OVERSHOOT_ENTER_EPS_PX && deltaHeightPx > 0f)
         if (inOvershoot) {
@@ -315,7 +352,7 @@ internal class XBottomSheetState internal constructor(
         }
     }
 
-    // Settle: по скорости/ближайшему якорю из таблицы; Hidden → свайп-закрытие (если dismissOnSwipeDown).
+    /** Довод к якорю после отпускания: по скорости/ближайшему из таблицы; Hidden -> свайп-закрытие (если разрешено). */
     private suspend fun settle(velocity: Float) {
         isDragging = false
         accumulatedOvershootPx = 0f
@@ -329,9 +366,10 @@ internal class XBottomSheetState internal constructor(
         }
     }
 
-    // Лист стоит на rest-якоре? onPreFling не съедает инерцию списка, если лист уже дорос до якоря.
+    /** Стоит ли лист на rest-якоре: onPreFling не съедает инерцию списка, если лист уже дорос до якоря. */
     internal fun isOffsetAtRestAnchor(): Boolean = anchorTable?.isAtRestAnchor(offset.value) ?: false
 
+    /** Меняет логический стейт и анимирует высоту к его якорю пружиной NativeSheetSpring. */
     private suspend fun animateTo(target: SheetValue) {
         currentValue = target
         val anchor = metrics?.anchorPx(target, skipCollapsed)?.toFloat() ?: 0f

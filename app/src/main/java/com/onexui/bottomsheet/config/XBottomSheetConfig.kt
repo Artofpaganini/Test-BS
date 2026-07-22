@@ -8,6 +8,10 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.onexui.bottomsheet.handle.DragHandleStyle
 
+/**
+ * Immutable-конфиг листа: визуал (форма/цвета/хендл), поведени закрытия/клавиатуры и вшитая физика жестов.
+ * Собирается билдером; дефолт — XBottomSheetConfigDefault (стабильная идентичность держит skip рекомпозиции).
+ */
 @Immutable
 internal class XBottomSheetConfig internal constructor(
     val overlayBackground: Boolean,
@@ -26,9 +30,9 @@ internal class XBottomSheetConfig internal constructor(
     val loadingSheetHeight: Dp = 192.dp
     // Дистанция разгона альфы скрима по высоте листа.
     val scrimFadeDistance: Dp = 120.dp
-    // Максимальный визуальный сдвиг листа за predictive-back-жестом (Android 14+); прочие конфигурации back — 1:1.
+    // Максимальный визуальный сдвиг листа за predictive-back-жестом (Android 14+).
     val predictiveBackMaxShift: Dp = 48.dp
-    // Вшитая физика жестов (§9, НЕ публичный конфиг; менять только с полным прогоном 21 кейса). px намеренно —
+    // Вшитая физика жестов (НЕ публичный конфиг; менять только с полным прогоном всех demo-кейсов). px намеренно —
     // перевод в dp менял бы поведение на не-базовой плотности.
     val flingVelocityThresholdPxPerSec: Float = 400f
     val resistanceMaxPx: Float = 240f

@@ -2,9 +2,11 @@ package com.onexui.bottomsheet.state
 
 import kotlin.math.abs
 
-// Якорная математика, вынесенная из стейт-машины (порт settle/floor/ceiling/isAtRest 1:1). restEntries —
-// rest-якоря, отсортированы по высоте и distinct по px, БЕЗ Hidden (dismissOnSwipeDown мутабелен → Hidden
-// добавляется в момент запроса settle). Строится через SheetMetrics.toAnchorTable.
+/**
+ * Якорная математика листа (settle/floor/ceiling/isAtRest). restEntries — rest-якоря, отсортированы по высоте и
+ * distinct по px, БЕЗ Hidden (dismissOnSwipeDown мутабелен -> Hidden добавляется в момент запроса settle).
+ * Строится через SheetMetrics.toAnchorTable.
+ */
 internal class SheetAnchorTable internal constructor(private val restEntries: List<AnchorEntry>) {
 
     internal data class AnchorEntry(val value: SheetValue, val anchorPx: Int)
@@ -12,8 +14,10 @@ internal class SheetAnchorTable internal constructor(private val restEntries: Li
     val lowestRestAnchorPx: Int = restEntries.firstOrNull()?.anchorPx ?: 0
     val highestRestAnchorPx: Int = restEntries.lastOrNull()?.anchorPx ?: 0
 
-    // Порт settle-выбора: fling → якорь по направлению, иначе ближайший. Hidden(0) — только при isDismissAllowed
-    // и отсутствии rest-якоря на 0px (семантика distinctBy). null — если кандидатов нет (метрики без якорей).
+    /**
+     * Выбор якоря при отпускании: fling -> якорь по направлению, иначе ближайший. Hidden(0) — толко при
+     * isDismissAllowed и отсутствии rest-якоря на 0px. null — если кандидатов нет (метрики без якорей).
+     */
     fun settleTarget(
         offsetPx: Float,
         velocityPxPerSec: Float,
@@ -39,7 +43,7 @@ internal class SheetAnchorTable internal constructor(private val restEntries: Li
         return chosen.value
     }
 
-    // rest-якоря без Hidden → onPreFling не съедает инерцию списка, если лист уже дорос до якоря.
+    /** Стоит ли offset на rest-якоре (без Hidden): onPreFling не съедает инерцию списка, если лист дорос до якоря. */
     fun isAtRestAnchor(offsetPx: Float): Boolean =
         restEntries.any { entry -> abs(entry.anchorPx - offsetPx) < ANCHOR_EPS }
 }

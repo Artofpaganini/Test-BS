@@ -8,7 +8,10 @@ import com.onexui.bottomsheet.additionaltop.AdditionalTopState
 import com.onexui.bottomsheet.state.SheetValue
 import com.onexui.bottomsheet.state.XBottomSheetState
 
-// keyboardController/focusManager пишутся из корня SideEffect'ом (тот же приём, что onDismissRequest в стейте).
+/**
+ * Реализация scope поверх стейта: проксирет sheetValue/isFillMode/additionalTopState и dismiss/hideKeyboard.
+ * keyboardController/focusManager вписываются из корня SideEffect'ом (как onDismissRequest в стейте).
+ */
 @Stable
 internal class XBottomSheetScopeImpl(
     private val state: XBottomSheetState,

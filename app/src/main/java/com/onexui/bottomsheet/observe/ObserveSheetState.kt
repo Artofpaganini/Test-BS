@@ -11,16 +11,15 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import org.xplatform.uikit.compose.modifier.keyboard.lift.KeyboardLiftState
 
-// Единая точка реактивных snapshotFlow-наблюдателей листа. Четыре дочерних коллектора (каждый переживает отмену
-// соседа):
-//   1. Рост/уменьшение контента → высота следует. Каждый пересчёт — в отдельном launch: его offset.animateTo
-//      прерывается конкурирующей анимацией (show/settle) CancellationException'ом, без launch это убило бы
-//      коллектор (после первого прерывания рост перестал бы отслеживаться).
-//   2. Клавиатура → авто-FullScreen при нехватке места (или всегда, для StayUnderKeyboard) / откат при скрытии.
-//   3. Hidden → onSheetHidden (принудительный дроп IME).
-//   4. Живые поля стейта (skipCollapsed/peekFraction/anchors) → пере-резолв метрик+якорей и доводка высоты у
-//      покоящегося листа. Тот же приём отдельного launch, что и #1 (конкурирующая анимация не убивает коллектор).
-// snapToCurrentAnchor (поворот) — НЕ здесь: one-shot по размерам экрана, не snapshotFlow.
+/**
+ * Единая точка реактивных snapshotFlow-наблюдателей листа. Четыре дочерних коллектора (каждый переживает отмену соседа):
+ * 1. Рост/уменьшение контена -> высота следует (каждый пересчёт в отдельном launch, см. ниже).
+ * 2. Клавиатура -> авто-FullScreen при нехватке места (или всегда для StayUnderKeyboard) / откат при скрытии.
+ * 3. Hidden -> onSheetHidden (принудительный дроп IME).
+ * 4. Живые поля (skipCollapsed/peekFraction/anchors) -> пере-резолв метрик+якорей и доводка высоты у покоящегося листа.
+ *
+ * snapToCurrentAnchor (поворот) — НЕ здесь: one-shot по размерам экрана, не snapshotFlow.
+ */
 @Composable
 internal fun ObserveSheetState(
     state: XBottomSheetState,
@@ -29,15 +28,14 @@ internal fun ObserveSheetState(
 ) {
     LaunchedEffect(state, keyboardState) {
         launch {
+            // Отдельный launch на эмиссию: конкурирующая анимация (show/settle) прервёт animateTo, не убив коллектор.
             snapshotFlow { state.metrics?.contentHeightPx }
                 .filterNotNull()
                 .collect { launch { state.onContentRemeasured() } }
         }
         launch {
-            // Ключ (lift, isLoading): при снятии Loading под открытой IME (keyboardState не менялся) промоушен
-            // переоценивается заново — иначе Collapsed под видимой IME увёл бы верх листа за статус-бар (без
-            // авто-FullScreen). onImeShown идемпотентен (гард по стейтам); высоту/флаг стейт читает live из
-            // keyboardState (см. XBottomSheetState.shouldPromoteForIme).
+            // Ключ (lift, isLoading): при снятии Loading под открытой IME промоушен переоценивается заново (иначе Collapsed увёл бы верх за статус-бар).
+            // onImeShown идемпотентен (гард по стейтам).
             snapshotFlow { keyboardState.value to state.isLoading }
                 .distinctUntilChanged()
                 .collect { (lift, _) ->
@@ -45,15 +43,13 @@ internal fun ObserveSheetState(
                 }
         }
         launch {
-            // drop(1): пропускаем стартовую эмиссию, иначе скрытый на старте лист сразу дёрнул бы onSheetHidden
-            // (дроп чужого фокуса/IME). Реагируем только на переход visible → hidden.
+            // drop(1): стартовую эмиссию пропускаем (скрытый на старте лист не должен дёргать onSheetHidden); ловим переход visible -> hidden.
             snapshotFlow { state.isVisible }
                 .drop(1)
                 .collect { visible -> if (!visible) onSheetHidden() }
         }
         launch {
-            // drop(1): стартовую вариацию (её задал билдер) не пере-резолвим — лист ещё не показан. Реагируем
-            // на живые смены. Отдельный launch на эмиссию — как в #1.
+            // drop(1): стартовую вариацию (от билдера) не пере-резолвим; отдельный launch на эмиссию — как в #1.
             snapshotFlow { Triple(state.skipCollapsed, state.peekFraction, state.anchors) }
                 .drop(1)
                 .distinctUntilChanged()

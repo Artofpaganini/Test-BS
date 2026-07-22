@@ -11,7 +11,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 
-// Read-only маркер, позиционируется вызывающим (align TopCenter), вёрстку не двигает.
+/** Read-only маркер-«пилюля» перетаскивния: позиционируется вызывающим (align TopCenter), вёрстку не двигает. */
 @Composable
 internal fun DragHandle(
     style: DragHandleStyle,

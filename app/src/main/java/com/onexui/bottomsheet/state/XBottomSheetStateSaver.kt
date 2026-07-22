@@ -3,11 +3,15 @@ package com.onexui.bottomsheet.state
 import androidx.compose.runtime.saveable.Saver
 import com.onexui.bottomsheet.additionaltop.AdditionalTopState
 
-// Saver-контракт (инвариант process-death): append-only список [tag, isLoading, additionalTopName, …новое в конец];
-// чтение getOrNull(i) as? T ?: default (forward-tolerance); tag-freeze (h/c/col/ec/efs/l/cu: — персистентные теги,
-// ре-неймы SheetValue их НЕ меняют). Живые поля (peekFraction/anchors/skipCollapsed) НЕ сохраняются: стейт
-// пересоздаётся билдером (начальная вариация), а последующие присвоения повторяет код в композиции; Custom(key)
-// при удалённом якоре деградирует к peekFraction.
+/**
+ * Saver стейта листа (инвариант process-death). Формат — append-only список
+ * `[tag, isLoading, additionalTopName, …новое в конец]`; чтение `getOrNull(i) as? T ?: default`
+ * (forward-tolerance: старый формат читаеться новым кодом). Теги SheetValue заморожены
+ * (h/c/col/ec/efs/l/cu: — персистентны, ре-неймы значений их НЕ меняют).
+ *
+ * Живые поля (peekFraction/anchors/skipCollapsed) НЕ сохраняются: стейт пересоздаётся билдером (начальная
+ * вариация), последующие присвоения повторяет код в композиции. Custom(key) при удалённом якоре деградирует к peekFraction.
+ */
 internal fun xBottomSheetStateSaver(builder: XBottomSheetStateBuilder): Saver<XBottomSheetState, List<Any>> = Saver(
     save = { state ->
         listOf(sheetValueTag(state.currentValue), state.isLoading, state.additionalTopState.name)
@@ -26,9 +30,11 @@ internal fun xBottomSheetStateSaver(builder: XBottomSheetStateBuilder): Saver<XB
     },
 )
 
+/** Восстановление AdditionalTopState по имени enum; неизвестное имя -> Expanded (forward-tolerance). */
 private fun additionalTopFromName(name: String?): AdditionalTopState =
     AdditionalTopState.entries.firstOrNull { entry -> entry.name == name } ?: AdditionalTopState.Expanded
 
+/** Замороженный тег стейта для сохранения (h/c/col/ec/efs/l/cu:key). */
 private fun sheetValueTag(value: SheetValue): String = when (value) {
     SheetValue.Hidden -> "h"
     SheetValue.Content -> "c"
@@ -39,6 +45,7 @@ private fun sheetValueTag(value: SheetValue): String = when (value) {
     is SheetValue.Custom -> "cu:${value.key}"
 }
 
+/** Восстановление стейта по замороженному тегу; неизвестный тег -> Hidden (forward-tolerance). */
 private fun sheetValueFromTag(tag: String): SheetValue = when {
     tag == "h" -> SheetValue.Hidden
     tag == "c" -> SheetValue.Content

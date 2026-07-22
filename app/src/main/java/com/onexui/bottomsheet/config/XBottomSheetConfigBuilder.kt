@@ -2,11 +2,13 @@ package com.onexui.bottomsheet.config
 
 import com.onexui.bottomsheet.handle.DragHandleStyle
 
+/** DSL-билдер конфига листа: скалярные поля + вложеные группы (additionalTop/dismiss/keyboard/colors). */
 @XBottomSheetDsl
 internal class XBottomSheetConfigBuilder {
     var overlayBackground: Boolean = true
     var dragHandle: DragHandleStyle? = DragHandleStyle.Theme
-    // internal для inline-групп; при переносе в public API xbet → @PublishedApi internal
+
+    // internal для доступа из inline-групп; при переносе в public API xbet -> @PublishedApi internal.
     internal val additionalTopBuilder = AdditionalTopConfigBuilder()
     internal val dismissBuilder = DismissConfigBuilder()
     internal val keyboardBuilder = KeyboardConfigBuilder()

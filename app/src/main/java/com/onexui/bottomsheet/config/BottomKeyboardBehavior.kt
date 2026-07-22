@@ -1,5 +1,7 @@
 package com.onexui.bottomsheet.config
 
-// StayUnderKeyboard: над клавиатурой поднимаются top+middle, bottom прижат к нижней кромке и уходит ПОД
-// клавиатуру; при показе IME лист форсированно разворачивается в FullScreen. Lift: поднимается весь контент.
+/**
+ * Поведение bottom-слота при показе клавиатры. Lift — поднимается весь контент. StayUnderKeyboard — top+middle
+ * поднимаются, bottom прижат к нижней кромке и уходит ПОД клавиатуру, лист форсированно разворачивается в FullScreen.
+ */
 internal enum class BottomKeyboardBehavior { Lift, StayUnderKeyboard }

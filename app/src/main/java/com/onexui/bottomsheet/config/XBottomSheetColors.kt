@@ -3,7 +3,10 @@ package com.onexui.bottomsheet.config
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 
-// Цвета конфигурируемы; Unspecified → дефолт спеки/темы (резолв в композиции корня — см. XBottomSheetColorsResolve).
+/**
+ * Цвета листа (scrim/фон/хендл). Каждый конфигурируем; Unspecified -> дефолт спеки или темы, резолв в композицие
+ * корня (см. XBottomSheetColorsResolve). specScrim/specHandleStatic — тема-независимые дефолты спеки.
+ */
 @Immutable
 internal class XBottomSheetColors(
     val scrim: Color,

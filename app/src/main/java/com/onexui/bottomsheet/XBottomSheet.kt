@@ -45,6 +45,11 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.launch
 import org.xplatform.uikit.compose.modifier.keyboard.lift.rememberKeyboardLiftState
 
+/**
+ * Корень бottom-листа: связывает стейт, конфиг и слоты (additionalTop/top/bottom/middle), рисует scrim и
+ * контейнер, резолвит тему-цвета, вайрит физику/IME/dismiss в стейт одним SideEffect'ом и обрабатывает
+ * predictive-back.
+ */
 @Composable
 internal fun XBottomSheet(
     state: XBottomSheetState,
@@ -59,8 +64,7 @@ internal fun XBottomSheet(
     val density = LocalDensity.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
-    // onDismissRequest — suspend; компонент вызывает её через свой scope. Поле state.onDismissRequest остаётся
-    // не-suspend launcher'ом (см. SideEffect): скрим/settle/back/requestDismiss зовут его синхронно.
+    // onDismissRequest — suspend; state.onDismissRequest остаётся не-suspend launcher'ом (см. SideEffect ниже).
     val dismissScope = rememberCoroutineScope()
     val currentOnDismiss by rememberUpdatedState(onDismissRequest)
     val sheetScope = remember(state) { XBottomSheetScopeImpl(state, config.loadingSheetHeight) }
@@ -74,7 +78,7 @@ internal fun XBottomSheet(
     // Loading-якорь = 192dp + navBarPx: видимая зона Loader'а остаётся 192dp несмотря на nav-bar-паддинг внутри.
     val loadingSheetHeightPx = with(density) { config.loadingSheetHeight.roundToPx() } + navBarPx
     val scrimFadeDistancePx = with(density) { config.scrimFadeDistance.toPx() }
-    // Цвета резолвятся в композиции корня (тема доступна): Unspecified → дефолт. Вниз идут готовые Color-примитивы.
+    // Цвета резолвятся в композиции корня (тема доступна): Unspecified -> дефолт. Вниз идут готовые Color-примитивы.
     val scrimColor = config.colors.resolveScrim()
     val sheetBackgroundColor = config.colors.resolveSheetBackground()
     val handleThemeColor = config.colors.resolveHandleTheme()
@@ -83,15 +87,13 @@ internal fun XBottomSheet(
     val widthModifier = if (isWide) Modifier.width(config.maxWidth) else Modifier.fillMaxWidth()
     // Единый источник состояния IME для авто-FullScreen и модификаторов подъёма/сжатия.
     val keyboardState = rememberKeyboardLiftState()
-    // Жесты высоты отключены: dragHandle==null, Loading, ИЛИ открыта IME. derivedStateOf уведомляет читателей
-    // только при фактической смене (show/hide IME, isLoading).
+    // Жесты высоты отключены при dragHandle==null / Loading / открытой IME; derivedStateOf будит читателей только при смене.
     val interactionsEnabledState = remember(config.dragHandle) {
         derivedStateOf { config.dragHandle != null && !state.isLoading && !keyboardState.value.isKeyboardVisible }
     }
     val interactionsEnabled by interactionsEnabledState
     val isFullScreen = state.currentValue == SheetValue.ExpandedFullScreen
-    // Фракция Additional Top: 1 = Expanded, 0 = скрыта. Animatable (не animate*AsState): .value читается только
-    // в measure → инвалидация layout, не композиции. Старт — по восстановленному additionalTopState.
+    // Фракция Additional Top (1=Expanded, 0=скрыта). Animatable: .value читается в measure -> инвалидация layout, не композиции.
     val additionalTopFraction = remember(state) {
         Animatable(if (state.additionalTopState == AdditionalTopState.Expanded) 1f else 0f)
     }
@@ -105,16 +107,14 @@ internal fun XBottomSheet(
             }
     }
 
-    // onSheetHidden роняет IME: иначе keyboard-lift оффсет продолжал бы поднимать контейнер и лист «улетел» бы
-    // вверх, отцепившись от нижней кромки.
+    // onSheetHidden роняет IME: иначе keyboard-lift оффсет поднял бы пустой контейнер и лист «улетел» бы вверх.
     ObserveSheetState(
         state = state,
         keyboardState = keyboardState,
         onSheetHidden = { sheetScope.hideKeyboard() },
     )
-    // Back-press закрывает лист при dismiss.onBackPress; дефолт false → PredictiveBackHandler(enabled=false)
-    // пропускает событие хосту/Activity (1:1). Predictive-жест (Android 14+) двигает лист за прогрессом через
-    // backShift (отдельный визуальный слой): отмена возвращает к 0, успешный back — тот же dismiss + сброс сдвига.
+    // Predictive-back (Android 14+): жест двигает лист за прогрессом через backShift; отмена -> 0, успех -> dismiss + сброс.
+    // enabled=false (дефолт onBackPress) пропускает событие хосту/Activity.
     val backShift = remember { Animatable(0f) }
     val predictiveBackMaxShiftPx = with(density) { config.predictiveBackMaxShift.toPx() }
     PredictiveBackHandler(enabled = state.isVisible && config.dismiss.onBackPress) { progress ->
@@ -130,15 +130,13 @@ internal fun XBottomSheet(
     // Поворот/resize: снап высоты к якорю (one-shot по размерам, не snapshotFlow — иначе пере-подписал бы коллекторы).
     LaunchedEffect(state, screenHeightPx, statusBarPx) { state.snapToCurrentAnchor() }
 
-    // Конфиг закрытия + не-suspend launcher поверх suspend onDismissRequest (settle/скрим/back/requestDismiss зовут
-    // синхронно) + проброс IME-контроллеров в scope — всё в стейт/scope одним SideEffect'ом.
+    // Один SideEffect: конфиг закрытия/физика + не-suspend launcher поверх suspend onDismissRequest + IME-контроллеры в scope.
     SideEffect {
         state.dismissOnSwipeDown = config.dismiss.onSwipeDown
         state.flingVelocityThresholdPxPerSec = config.flingVelocityThresholdPxPerSec
         state.resistanceMaxPx = config.resistanceMaxPx
         state.onDismissRequest = { dismissScope.launch { currentOnDismiss() } }
-        // Ссылка на live-состояние IME + конфиг-флаг для решения о промоушене (стейт читает их в shouldPromoteForIme,
-        // без копий). alwaysFullScreenOnIme: StayUnderKeyboard + bottom → bottom доходит до нижней кромки под клавиатуру.
+        // Live-IME + конфиг-флаг промоушена (стейт читает в shouldPromoteForIme без копий); alwaysFullScreenOnIme = StayUnderKeyboard+bottom.
         state.keyboardState = keyboardState
         state.alwaysFullScreenOnIme =
             config.keyboard.bottomBehavior == BottomKeyboardBehavior.StayUnderKeyboard && bottom != null
@@ -185,14 +183,12 @@ internal fun XBottomSheet(
             additionalTopFraction = additionalTopFraction,
             additionalTopConfig = config.additionalTop,
             additionalTopOverlap = config.additionalTopOverlap,
-            // Слоты биндятся к ОДНОМУ инстансу scope литералом в параметр (detect/place-копии тела получают тот же
-            // sheetScope; requestDismiss из detect-копии недостижим — она не placed).
+            // Слоты биндятся к ОДНОМУ scope литералом (detect/place-копии тела получают тот же sheetScope; requestDismiss из detect недостижим — не placed).
             additionalTop = additionalTop?.let { slot -> @Composable { sheetScope.slot() } },
             top = top?.let { slot -> @Composable { sheetScope.slot() } },
             bottom = bottom?.let { slot -> @Composable { sheetScope.slot() } },
             middle = { if (state.isLoading) sheetScope.PresetLoader() else sheetScope.middle() },
-            // Predictive-back-сдвиг листа: backShift.value читается в draw-фазе (лямбда graphicsLayer), скрим —
-            // отдельный узел выше, не двигается; AdditionalTop-карточка внутри контейнера едет вместе с листом.
+            // backShift.value читается в draw-фазе (graphicsLayer); скрим — отдельный узел выше, не двигается.
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .then(widthModifier)

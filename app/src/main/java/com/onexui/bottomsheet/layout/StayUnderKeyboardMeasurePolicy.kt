@@ -11,6 +11,11 @@ import androidx.compose.ui.unit.Constraints
 import org.xplatform.uikit.compose.modifier.keyboard.lift.KeyboardLiftState
 import kotlin.math.roundToInt
 
+/**
+ * MeasurePolicy режима StayUnderKeyboard: раскладывает middle (скролл) и bottom (sticky). При IME middle кончается
+ * у верхней кромки клавиатры, bottom уходит под неё; без IME bottom стоит над nav bar. IME/navBar читаются в
+ * measure-фазе (State) — реакция без рекомпозиции.
+ */
 internal class StayUnderKeyboardMeasurePolicy(
     private val keyboardState: State<KeyboardLiftState>,
     private val navBarState: State<Int>,
@@ -21,7 +26,6 @@ internal class StayUnderKeyboardMeasurePolicy(
         constraints: Constraints,
     ): MeasureResult {
         val width = constraints.maxWidth
-        // Чтение IME/navBar в layout-фазе: инвалидация measure узла при их смене, без рекомпозиции.
         val navBarPx = navBarState.value
         val keyboardHeightPx = keyboardState.value.let { liftState ->
             if (liftState.isKeyboardVisible) liftState.keyboardHeight.roundToInt() else 0
@@ -31,8 +35,7 @@ internal class StayUnderKeyboardMeasurePolicy(
             constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity),
         )
         val bottomHeight = bottomPlaceable.height
-        // intrinsic-Infinity гард: override maxIntrinsicHeight обычно перехватывает; на всякий случай кладём
-        // middle натурально, bottom под ним, и возвращаем конечную высоту.
+        // Гард intrinsic-Infinity: override maxIntrinsicHeight обычно перехватывает; здесь — натуральная раскладка на всякий случай.
         if (constraints.maxHeight == Constraints.Infinity) {
             val middleNatural = measurables[0].measure(
                 constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity),
@@ -58,7 +61,7 @@ internal class StayUnderKeyboardMeasurePolicy(
         }
     }
 
-    // Натуральная высота = список + bottom + nav bar. Без override — measure с Infinity → мусор в contentHeightPx и краш.
+    /** Натуральная высота = middle + bottom + nav bar. Без override measure с Infinity дал бы мусор в contentHeightPx и краш. */
     override fun IntrinsicMeasureScope.maxIntrinsicHeight(
         measurables: List<IntrinsicMeasurable>,
         width: Int,

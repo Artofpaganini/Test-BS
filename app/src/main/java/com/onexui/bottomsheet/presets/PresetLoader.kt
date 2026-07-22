@@ -9,7 +9,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.onexui.bottomsheet.XBottomSheetScope
 
-// Loader для Middle: простой индикатор (Lottie в БШ запрещён, скелетон не поддерживается).
+/** Пресет Loader для Middle: простой индикатор (Lottie в листе запрещён, скелетон не поддерживаеться). */
 @Composable
 internal fun XBottomSheetScope.PresetLoader(modifier: Modifier = Modifier) {
     Box(

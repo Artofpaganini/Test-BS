@@ -27,8 +27,11 @@ import org.xplatform.uikit.compose.modifier.keyboard.adjustment.withAdjustmentFo
 import org.xplatform.uikit.compose.modifier.keyboard.lift.KeyboardLiftState
 import kotlin.math.roundToInt
 
-// Контейнер листа: SubcomposeLayout мерит тело ДВАЖДЫ (detect/place, см. ниже). withAdjustmentForKeyboard
-// (подъём над IME) — только вне FullScreen: в FullScreen лист у потолка, там Middle сжимается вместо подъёма.
+/**
+ * Контейнер листа: SubcomposeLayout мерит тело ДВАЖДЫ — detect (wrap контена -> contentHeightPx) и place
+ * (fixed по offset -> реальная высота). withAdjustmentForKeyboard (подъём над IME) только вне FullScreen: в
+ * FullScreen лист у потолка, там Middle сжимается вместо подъёма. Карточка Additional Top — отдельный слой над листом.
+ */
 @Composable
 internal fun SheetContainer(
     state: XBottomSheetState,
@@ -83,12 +86,10 @@ internal fun SheetContainer(
             middle = middle,
         )
     }
-    // Слот-лямбды detect/place — в композиции (не в measure): стабильная идентичность контента между
-    // layout-пассами → SubcomposeLayout не пере-сетит контент и не аллоцирует лямбды на кадр драга.
+    // Слот-лямбды detect/place — в композиции (не в measure): стабильная идентичность -> SubcomposeLayout не пере-сетит контент на кадр драга.
     val detectBody: @Composable () -> Unit = { sheetBodySlot(fillHeight = false) }
     val placeBody: @Composable () -> Unit = { sheetBodySlot(fillHeight = true) }
-    // Карточка Additional Top — отдельный слой НАД листом (свой слот), клип верхних углов + натуральная высота.
-    // Отдельно, чтобы её протрузия не входила в детект/высоту тела и анимация фракции не дёргала контент листа.
+    // Карточка Additional Top — отдельный слот над листом (клип верхних углов): её протрузия не входит в detect/высоту тела, фракция не дёргает контент.
     val additionalTopBody: (@Composable () -> Unit)? = additionalTop?.let { card ->
         {
             Box(
@@ -103,9 +104,7 @@ internal fun SheetContainer(
             }
         }
     }
-    // Тело композируется один раз, меряется дважды: (1) detect при ограниченной maxHeight → contentHeightPx
-    // (короткий wrap < max, ленивый fill == max → режим wrap/fill); (2) place при fixed(offset) → реальная
-    // высота. Карточка Additional Top — третий слот, вне detect (её протрузия не гонит offset за фракцией).
+    // Тело: композируется раз, меряется дважды (detect при maxHeight -> режим wrap/fill; place при fixed(offset) -> высота).
     SubcomposeLayout(
         modifier = modifier
             .then(shadowModifier)
@@ -114,7 +113,7 @@ internal fun SheetContainer(
             .sheetDrag(state = state, enabled = interactionsEnabled),
     ) { constraints ->
         val width = constraints.maxWidth
-        // Один Measurable нельзя мерить дважды за пасс → два слота (detect невидимый при maxHeight, place при fixed(offset)).
+        // Один Measurable нельзя мерить дважды за пасс -> два слота (detect невидимый при maxHeight, place при fixed(offset)).
         val detectHeight = subcompose(ContentMeasureSlot, detectBody).first().measure(
             Constraints(maxWidth = width, minHeight = 0, maxHeight = ceilingPx),
         ).height
@@ -128,10 +127,8 @@ internal fun SheetContainer(
         val surfacePlaceable = subcompose(VisibleContentSlot, placeBody).first().measure(
             Constraints.fixed(width = width, height = sheetHeight),
         )
-        // Карточка — протрузия НАД листом. surface всегда высотой sheetHeight → контент неподвижен; видимая
-        // высота карточки = fraction × (natural − overlap), fraction читается ЗДЕСЬ, в measure (deferred,
-        // синхронно с sheetHeight, без догоняющей пружины). Карточка кладётся раньше surface → surface поверх
-        // (её низ overlap утоплен). Лист bottom-aligned → карточка растёт вверх.
+        // Карточка над листом: видимая высота = fraction × (natural − overlap), fraction читается ЗДЕСЬ, в measure
+        // (синхронно с sheetHeight). Кладётся раньше surface -> surface поверх, её низ overlap утоплен.
         val overlapPx = additionalTopOverlap.roundToPx()
         val cardMeasurable = additionalTopBody?.let { subcompose(AdditionalTopCardSlot, it).firstOrNull() }
         val cardVisibleHeight = if (cardMeasurable != null) {
