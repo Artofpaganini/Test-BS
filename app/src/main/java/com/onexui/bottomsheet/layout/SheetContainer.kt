@@ -27,11 +27,6 @@ import org.xplatform.uikit.compose.modifier.keyboard.adjustment.withAdjustmentFo
 import org.xplatform.uikit.compose.modifier.keyboard.lift.KeyboardLiftState
 import kotlin.math.roundToInt
 
-/**
- * Контейнер листа: SubcomposeLayout мерит тело ДВАЖДЫ — detect (wrap контена -> contentHeightPx) и place
- * (fixed по offset -> реальная высота). withAdjustmentForKeyboard (подъём над IME) только вне FullScreen: в
- * FullScreen лист у потолка, там Middle сжимается вместо подъёма. Карточка Additional Top — отдельный слой над листом.
- */
 @Composable
 internal fun SheetContainer(
     state: XBottomSheetState,
@@ -65,7 +60,6 @@ internal fun SheetContainer(
     } else {
         Modifier
     }
-    // fillHeight: detect wrap'ит тело (замер контента); place заполняет offset (фон на всю высоту листа).
     @Composable
     fun sheetBodySlot(fillHeight: Boolean) {
         SheetBody(
@@ -86,10 +80,8 @@ internal fun SheetContainer(
             middle = middle,
         )
     }
-    // Слот-лямбды detect/place — в композиции (не в measure): стабильная идентичность -> SubcomposeLayout не пере-сетит контент на кадр драга.
     val detectBody: @Composable () -> Unit = { sheetBodySlot(fillHeight = false) }
     val placeBody: @Composable () -> Unit = { sheetBodySlot(fillHeight = true) }
-    // Карточка Additional Top — отдельный слот над листом (клип верхних углов): её протрузия не входит в detect/высоту тела, фракция не дёргает контент.
     val additionalTopBody: (@Composable () -> Unit)? = additionalTop?.let { card ->
         {
             Box(
@@ -104,7 +96,6 @@ internal fun SheetContainer(
             }
         }
     }
-    // Тело: композируется раз, меряется дважды (detect при maxHeight -> режим wrap/fill; place при fixed(offset) -> высота).
     SubcomposeLayout(
         modifier = modifier
             .then(shadowModifier)
@@ -113,7 +104,6 @@ internal fun SheetContainer(
             .sheetDrag(state = state, enabled = interactionsEnabled),
     ) { constraints ->
         val width = constraints.maxWidth
-        // Один Measurable нельзя мерить дважды за пасс -> два слота (detect невидимый при maxHeight, place при fixed(offset)).
         val detectHeight = subcompose(ContentMeasureSlot, detectBody).first().measure(
             Constraints(maxWidth = width, minHeight = 0, maxHeight = ceilingPx),
         ).height
@@ -127,8 +117,6 @@ internal fun SheetContainer(
         val surfacePlaceable = subcompose(VisibleContentSlot, placeBody).first().measure(
             Constraints.fixed(width = width, height = sheetHeight),
         )
-        // Карточка над листом: видимая высота = fraction × (natural − overlap), fraction читается ЗДЕСЬ, в measure
-        // (синхронно с sheetHeight). Кладётся раньше surface -> surface поверх, её низ overlap утоплен.
         val overlapPx = additionalTopOverlap.roundToPx()
         val cardMeasurable = additionalTopBody?.let { subcompose(AdditionalTopCardSlot, it).firstOrNull() }
         val cardVisibleHeight = if (cardMeasurable != null) {

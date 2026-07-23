@@ -42,14 +42,8 @@ import com.onexui.bottomsheet.presets.PresetLoader
 import com.onexui.bottomsheet.state.SheetValue
 import com.onexui.bottomsheet.state.XBottomSheetState
 import kotlin.coroutines.cancellation.CancellationException
-import kotlinx.coroutines.launch
 import org.xplatform.uikit.compose.modifier.keyboard.lift.rememberKeyboardLiftState
 
-/**
- * Корень бottom-листа: связывает стейт, конфиг и слоты (additionalTop/top/bottom/middle), рисует scrim и
- * контейнер, резолвит тему-цвета, вайрит физику/IME/dismiss в стейт одним SideEffect'ом и обрабатывает
- * predictive-back.
- */
 @Composable
 internal fun XBottomSheet(
     state: XBottomSheetState,
@@ -64,36 +58,28 @@ internal fun XBottomSheet(
     val density = LocalDensity.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
-    // onDismissRequest — suspend; state.onDismissRequest остаётся не-suspend launcher'ом (см. SideEffect ниже).
     val dismissScope = rememberCoroutineScope()
-    val currentOnDismiss by rememberUpdatedState(onDismissRequest)
+    val currentOnDismiss = rememberUpdatedState(onDismissRequest)
     val sheetScope = remember(state) { XBottomSheetScopeImpl(state, config.loadingSheetHeight) }
-    // Размеры экрана из LocalWindowInfo.containerSize (px); при повороте обновляется сам.
     val containerSize = LocalWindowInfo.current.containerSize
     val screenHeightPx = containerSize.height
     val screenWidthDp = with(density) { containerSize.width.toDp() }
     val statusBarPx = WindowInsets.statusBars.getTop(density)
-    // navBar inset: фон Surface остаётся edge-to-edge под баром, контент паддится инсетом внутри (bottom над баром).
     val navBarPx = WindowInsets.navigationBars.getBottom(density)
-    // Loading-якорь = 192dp + navBarPx: видимая зона Loader'а остаётся 192dp несмотря на nav-bar-паддинг внутри.
     val loadingSheetHeightPx = with(density) { config.loadingSheetHeight.roundToPx() } + navBarPx
     val scrimFadeDistancePx = with(density) { config.scrimFadeDistance.toPx() }
-    // Цвета резолвятся в композиции корня (тема доступна): Unspecified -> дефолт. Вниз идут готовые Color-примитивы.
     val scrimColor = config.colors.resolveScrim()
     val sheetBackgroundColor = config.colors.resolveSheetBackground()
     val handleThemeColor = config.colors.resolveHandleTheme()
     val handleStaticColor = config.colors.resolveHandleStatic()
     val isWide = screenWidthDp >= config.wideScreenThreshold
     val widthModifier = if (isWide) Modifier.width(config.maxWidth) else Modifier.fillMaxWidth()
-    // Единый источник состояния IME для авто-FullScreen и модификаторов подъёма/сжатия.
     val keyboardState = rememberKeyboardLiftState()
-    // Жесты высоты отключены при dragHandle==null / Loading / открытой IME; derivedStateOf будит читателей только при смене.
     val interactionsEnabledState = remember(config.dragHandle) {
         derivedStateOf { config.dragHandle != null && !state.isLoading && !keyboardState.value.isKeyboardVisible }
     }
     val interactionsEnabled by interactionsEnabledState
     val isFullScreen = state.currentValue == SheetValue.ExpandedFullScreen
-    // Фракция Additional Top (1=Expanded, 0=скрыта). Animatable: .value читается в measure -> инвалидация layout, не композиции.
     val additionalTopFraction = remember(state) {
         Animatable(if (state.additionalTopState == AdditionalTopState.Expanded) 1f else 0f)
     }
@@ -107,43 +93,38 @@ internal fun XBottomSheet(
             }
     }
 
-    // onSheetHidden роняет IME: иначе keyboard-lift оффсет поднял бы пустой контейнер и лист «улетел» бы вверх.
     ObserveSheetState(
         state = state,
         keyboardState = keyboardState,
         onSheetHidden = { sheetScope.hideKeyboard() },
     )
-    // Predictive-back (Android 14+): жест двигает лист за прогрессом через backShift; отмена -> 0, успех -> dismiss + сброс.
-    // enabled=false (дефолт onBackPress) пропускает событие хосту/Activity.
     val backShift = remember { Animatable(0f) }
     val predictiveBackMaxShiftPx = with(density) { config.predictiveBackMaxShift.toPx() }
     PredictiveBackHandler(enabled = state.isVisible && config.dismiss.onBackPress) { progress ->
         try {
             progress.collect { backEvent -> backShift.snapTo(backEvent.progress * predictiveBackMaxShiftPx) }
-            state.onDismissRequest()
+            state.requestDismiss()
             backShift.snapTo(0f)
         } catch (exception: CancellationException) {
             backShift.animateTo(0f, NativeSheetSpring)
             throw exception
         }
     }
-    // Поворот/resize: снап высоты к якорю (one-shot по размерам, не snapshotFlow — иначе пере-подписал бы коллекторы).
     LaunchedEffect(state, screenHeightPx, statusBarPx) { state.snapToCurrentAnchor() }
 
-    // Один SideEffect: конфиг закрытия/физика + не-suspend launcher поверх suspend onDismissRequest + IME-контроллеры в scope.
     SideEffect {
-        state.dismissOnSwipeDown = config.dismiss.onSwipeDown
-        state.flingVelocityThresholdPxPerSec = config.flingVelocityThresholdPxPerSec
-        state.resistanceMaxPx = config.resistanceMaxPx
-        state.onDismissRequest = { dismissScope.launch { currentOnDismiss() } }
-        // Live-IME + конфиг-флаг промоушена (стейт читает в shouldPromoteForIme без копий); alwaysFullScreenOnIme = StayUnderKeyboard+bottom.
-        state.keyboardState = keyboardState
-        state.alwaysFullScreenOnIme =
-            config.keyboard.bottomBehavior == BottomKeyboardBehavior.StayUnderKeyboard && bottom != null
-        sheetScope.keyboardController = keyboardController
-        sheetScope.focusManager = focusManager
+        state.updateDismissOnSwipeDown(config.dismiss.onSwipeDown)
+        state.updateFlingVelocityThreshold(config.flingVelocityThresholdPxPerSec)
+        state.updateResistanceMax(config.resistanceMaxPx)
+        state.updateDismissScope(dismissScope)
+        state.updateDismissRequest(currentOnDismiss)
+        state.updateKeyboardState(keyboardState)
+        state.updateAlwaysFullScreenOnIme(
+            config.keyboard.bottomBehavior == BottomKeyboardBehavior.StayUnderKeyboard && bottom != null,
+        )
+        sheetScope.updateKeyboardController(keyboardController)
+        sheetScope.updateFocusManager(focusManager)
     }
-    // Единственный потребитель канала жестов (drag/settle по порядку), один на весь лист.
     LaunchedEffect(state) { state.processGestures() }
 
     val nestedScrollConnection = remember(state) {
@@ -156,7 +137,7 @@ internal fun XBottomSheet(
             scrimColor = scrimColor,
             dismissOnOutsideTap = config.dismiss.onOutsideTap,
             scrimFadeDistancePx = scrimFadeDistancePx,
-            onDismissRequest = { state.onDismissRequest() },
+            onDismissRequest = { state.requestDismiss() },
         )
 
         SheetContainer(
@@ -183,12 +164,10 @@ internal fun XBottomSheet(
             additionalTopFraction = additionalTopFraction,
             additionalTopConfig = config.additionalTop,
             additionalTopOverlap = config.additionalTopOverlap,
-            // Слоты биндятся к ОДНОМУ scope литералом (detect/place-копии тела получают тот же sheetScope; requestDismiss из detect недостижим — не placed).
             additionalTop = additionalTop?.let { slot -> @Composable { sheetScope.slot() } },
             top = top?.let { slot -> @Composable { sheetScope.slot() } },
             bottom = bottom?.let { slot -> @Composable { sheetScope.slot() } },
             middle = { if (state.isLoading) sheetScope.PresetLoader() else sheetScope.middle() },
-            // backShift.value читается в draw-фазе (graphicsLayer); скрим — отдельный узел выше, не двигается.
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .then(widthModifier)

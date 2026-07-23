@@ -55,7 +55,9 @@ import com.onexui.bottomsheet.presets.PresetMenuCell
 import com.onexui.bottomsheet.presets.PresetSearchField
 import com.onexui.bottomsheet.presets.PresetSingleButton
 import com.onexui.bottomsheet.presets.PresetTitle
+import com.onexui.bottomsheet.state.SheetValue
 import com.onexui.bottomsheet.state.rememberXBottomSheetState
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
 // Тема Compose-слоя demo (отдельная от View-темы Activity): XBottomSheet и пресеты читают MaterialTheme.
@@ -648,9 +650,10 @@ private fun CasePredictiveBack(onClose: () -> Unit) {
 // (w) Живые ручки стейта: peekFraction и anchors меняются прямо в композиции — покоящийся лист доезжает к новому
 // якорю сам, без жеста. Кнопка «peek» двигает Collapsed-якорь (лист на нём — переезжает сразу). Кнопка «средний
 // якорь» правит кастомный rest-стоп: свайпни лист на него, затем меняй высоту — лист переедет между 50% и 33%.
+// Шапка показывает текущий стейт и обе доли, чтобы смена невидимого якоря читалась на экране.
 @Composable
 private fun CaseLiveHandles(onClose: () -> Unit) {
-    val state = rememberXBottomSheetState { anchors { "mid" at 0.5f } }
+    val state = rememberXBottomSheetState { anchors { "mid" at MID_DEFAULT_FRACTION } }
     var isWidePeek by remember { mutableStateOf(false) }
     var isLowMid by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { state.show() }
@@ -658,7 +661,23 @@ private fun CaseLiveHandles(onClose: () -> Unit) {
         state = state,
         onDismissRequest = { state.hide(); onClose() },
         top = {
+            val peekFraction = if (isWidePeek) PEEK_WIDE_FRACTION else PEEK_DEFAULT_FRACTION
+            val midFraction = if (isLowMid) MID_LOW_FRACTION else MID_DEFAULT_FRACTION
+            val isOnMidAnchor = sheetValue is SheetValue.Custom
             PresetTitle("Живые ручки стейта")
+            PresetBodyText("Стейт листа: ${describeSheetValue(sheetValue)}")
+            PresetBodyText(
+                "Якорь = высота листа снизу, доля экрана. " +
+                    "peek ${formatFractionPercent(peekFraction)} · средний ${formatFractionPercent(midFraction)}",
+            )
+            PresetBodyText(
+                if (isOnMidAnchor) {
+                    "Лист стоит НА среднем якоре → кнопка «средний якорь» подвинет лист."
+                } else {
+                    "Лист стоит НЕ на среднем якоре → кнопка «средний якорь» поменяет только число. " +
+                        "Протяни лист медленно вниз, чтобы он осел на средний якорь."
+                },
+            )
             Column(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -666,14 +685,14 @@ private fun CaseLiveHandles(onClose: () -> Unit) {
                 Button(
                     onClick = {
                         isWidePeek = !isWidePeek
-                        state.peekFraction = if (isWidePeek) 0.5f else 2f / 3f
+                        state.peekFraction = if (isWidePeek) PEEK_WIDE_FRACTION else PEEK_DEFAULT_FRACTION
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(text = if (isWidePeek) "peek → 2/3" else "peek → 1/2") }
                 Button(
                     onClick = {
                         isLowMid = !isLowMid
-                        state.anchors { "mid" at if (isLowMid) 0.33f else 0.5f }
+                        state.anchors { "mid" at if (isLowMid) MID_LOW_FRACTION else MID_DEFAULT_FRACTION }
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(text = if (isLowMid) "средний якорь → 50%" else "средний якорь → 33%") }
@@ -682,6 +701,19 @@ private fun CaseLiveHandles(onClose: () -> Unit) {
     ) {
         SportLazyList(SPORTS)
     }
+}
+
+private fun formatFractionPercent(fraction: Float): String =
+    "${(fraction * PERCENT_IN_FRACTION).roundToInt()}% экрана"
+
+private fun describeSheetValue(value: SheetValue): String = when (value) {
+    SheetValue.Hidden -> "Hidden — закрыт"
+    SheetValue.Content -> "Content — высота по контенту"
+    SheetValue.Collapsed -> "Collapsed — стоит на peek-якоре"
+    SheetValue.ExpandedContent -> "ExpandedContent — раскрыт по контенту"
+    SheetValue.ExpandedFullScreen -> "ExpandedFullScreen — во весь экран"
+    SheetValue.Loading -> "Loading — якорь лоадера"
+    is SheetValue.Custom -> "Custom(\"${value.key}\") — стоит на среднем якоре"
 }
 
 // Внешний контент слота Additional Top: кросс-фейд текстов (alpha 0 в Collapsed), чтобы гасли синхронно с
@@ -715,3 +747,8 @@ private fun AdditionalTopCard(collapsed: Boolean) {
 }
 
 private const val LOADING_DELAY_MS = 2000L
+private const val PEEK_DEFAULT_FRACTION = 2f / 3f
+private const val PEEK_WIDE_FRACTION = 0.5f
+private const val MID_DEFAULT_FRACTION = 0.5f
+private const val MID_LOW_FRACTION = 0.33f
+private const val PERCENT_IN_FRACTION = 100

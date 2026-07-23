@@ -8,17 +8,13 @@ import com.onexui.bottomsheet.additionaltop.AdditionalTopState
 import com.onexui.bottomsheet.state.SheetValue
 import com.onexui.bottomsheet.state.XBottomSheetState
 
-/**
- * Реализация scope поверх стейта: проксирет sheetValue/isFillMode/additionalTopState и dismiss/hideKeyboard.
- * keyboardController/focusManager вписываются из корня SideEffect'ом (как onDismissRequest в стейте).
- */
 @Stable
 internal class XBottomSheetScopeImpl(
     private val state: XBottomSheetState,
     override val loadingSheetHeight: Dp,
 ) : XBottomSheetScope {
-    internal var keyboardController: SoftwareKeyboardController? = null
-    internal var focusManager: FocusManager? = null
+    private var keyboardController: SoftwareKeyboardController? = null
+    private var focusManager: FocusManager? = null
 
     override val sheetValue: SheetValue get() = state.currentValue
     override val isFillMode: Boolean get() = state.metrics?.isFillMode ?: false
@@ -28,10 +24,20 @@ internal class XBottomSheetScopeImpl(
             state.additionalTopState = value
         }
 
-    override fun requestDismiss() = state.onDismissRequest()
+    override fun requestDismiss() = state.requestDismiss()
 
     override fun hideKeyboard() {
         keyboardController?.hide()
         focusManager?.clearFocus(force = true)
+    }
+
+    internal fun updateKeyboardController(keyboardController: SoftwareKeyboardController?) {
+        if (this.keyboardController === keyboardController) return
+        this.keyboardController = keyboardController
+    }
+
+    internal fun updateFocusManager(focusManager: FocusManager?) {
+        if (this.focusManager === focusManager) return
+        this.focusManager = focusManager
     }
 }

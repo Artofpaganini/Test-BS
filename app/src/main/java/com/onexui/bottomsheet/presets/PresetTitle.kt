@@ -8,7 +8,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 
-/** Пресет: заголовок листа (жирный titleLarge, отсупы из PresetSpacing). */
 @Composable
 internal fun PresetTitle(
     text: String,

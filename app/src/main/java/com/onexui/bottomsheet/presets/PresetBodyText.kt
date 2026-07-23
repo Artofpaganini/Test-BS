@@ -7,7 +7,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 
-/** Пресет: абзац второстепеного текста в теле листа (отступы из PresetSpacing). */
 @Composable
 internal fun PresetBodyText(
     text: String,

@@ -1,9 +1,5 @@
 package com.onexui.bottomsheet.state
 
-/**
- * Собирает якорную таблицы из метрик (rest-якоря для settle, без Hidden). fill -> Collapsed(peek)/
- * ExpandedFullScreen + кастомные; wrap -> Content или Collapsed+ExpandedContent по контенту. distinctBy+sortedBy по px.
- */
 internal fun SheetMetrics.toAnchorTable(skipCollapsed: Boolean): SheetAnchorTable {
     val entries = mutableListOf<SheetAnchorTable.AnchorEntry>()
     when {

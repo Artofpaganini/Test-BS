@@ -9,7 +9,6 @@ import androidx.compose.ui.unit.dp
 private val ShadowColor = Color.Black.copy(alpha = 0.10f)
 private val ShadowElevation = 16.dp
 
-/** Мягкая тень верхнего края листа (для non-overlay режима). clip=false: низ листа уходит за границу экана. */
 internal fun Modifier.softSheetShadow(shape: Shape): Modifier = this.shadow(
     elevation = ShadowElevation,
     shape = shape,

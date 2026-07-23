@@ -5,7 +5,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 
-/** Стаб-палитра темы листа: фон и цвет сепаратра (= Drag Handle в стиле Theme). */
 @Immutable
 internal data class XColors(
     val backgroundContent: Color,
@@ -22,7 +21,6 @@ private val DarkXColors = XColors(
     separator = Color(0xFF2A2F3A),
 )
 
-/** Точка доступа к палитре темы листа (light/dark по системной теме). */
 internal object XTheme {
     val colors: XColors
         @Composable get() = if (isSystemInDarkTheme()) DarkXColors else LightXColors

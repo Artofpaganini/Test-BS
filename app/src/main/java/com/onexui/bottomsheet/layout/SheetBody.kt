@@ -19,10 +19,6 @@ import com.onexui.bottomsheet.handle.DragHandle
 import com.onexui.bottomsheet.handle.DragHandleStyle
 import org.xplatform.uikit.compose.modifier.keyboard.lift.KeyboardLiftState
 
-/**
- * Тело листа: Surface со скруглёными верхними углами и слотами top(sticky) / middle(scroll) / bottom(sticky).
- * DragHandle рисуется поверх (TopCenter) и вёрстку не двигает.
- */
 @Composable
 internal fun SheetBody(
     dragHandle: DragHandleStyle?,
@@ -41,15 +37,11 @@ internal fun SheetBody(
     bottom: (@Composable () -> Unit)?,
     middle: @Composable () -> Unit,
 ) {
-    // StayUnderKeyboard активен только при наличии bottom-слота.
     val isBottomUnderKeyboardMode = bottomKeyboardBehavior == BottomKeyboardBehavior.StayUnderKeyboard && bottom != null
-    // fillHeight (place): тело заполняет offset (фон на всю высоту, нет дыры снизу). !fillHeight (detect): wrap по контенту.
     val sizeModifier = if (fillHeight) Modifier.fillMaxSize() else Modifier.fillMaxWidth()
-    // Middle без нашего verticalScroll (скролл даёт контент); weight(1f, fill=false): короткий wrap, ленивый заполняет.
     val sheetSurface: @Composable () -> Unit = {
         SheetSurface(modifier = sizeModifier, shape = shape, backgroundColor = sheetBackgroundColor) {
             if (isBottomUnderKeyboardMode) {
-                // bottom прижат к нижней кромке и уходит ПОД клавиатуру (StayUnderKeyboardContent); top — над регионом.
                 Column(modifier = sizeModifier) {
                     top?.invoke()
                     StayUnderKeyboardContent(
@@ -77,10 +69,8 @@ internal fun SheetBody(
     }
     Box(
         modifier = sizeModifier
-            // No-op гаситель тапов: тап по телу не проваливается на scrim; драги проходят (detectTapGestures отменяется по slop).
             .pointerInput(Unit) { detectTapGestures {} },
     ) {
-        // DragHandle у верхней кромки, ниже карточки Additional Top.
         sheetSurface()
         if (dragHandle != null) {
             DragHandle(

@@ -10,21 +10,14 @@ import com.onexui.bottomsheet.state.XBottomSheetState
 import com.onexui.bottomsheet.state.anchorPx
 import com.onexui.bottomsheet.state.expandTarget
 
-/**
- * Связка скролла Middle с высотой листа. Вверх в Collapsed — сначала растим лист, затем скроллим; вниз — сначала
- * доскролл к началу, затем тянем лист. Мутации offset — толко через FIFO-канал (enqueueDrag/Settle). enabledState —
- * тот же derivedStateOf, что гейтит sheetDrag; при видимой IME он false (nested-scroll двигает только список).
- */
 internal class SheetNestedScrollConnection(
     private val state: XBottomSheetState,
     private val enabledState: State<Boolean>,
 ) : NestedScrollConnection {
-
     override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
         if (!enabledState.value || source != NestedScrollSource.UserInput) return Offset.Zero
         val delta = available.y
         val metrics = state.metrics ?: return Offset.Zero
-        // Вверх (delta<0) в Collapsed растим лист до expandTarget, не до потолка (иначе жест утащил бы мимо ExpandedContent).
         val expandAnchor = metrics.anchorPx(metrics.expandTarget(), state.skipCollapsed)
         return if (delta < 0f && state.currentValue == SheetValue.Collapsed &&
             state.offset.value < expandAnchor
@@ -43,7 +36,6 @@ internal class SheetNestedScrollConnection(
     ): Offset {
         if (!enabledState.value || source != NestedScrollSource.UserInput) return Offset.Zero
         val delta = available.y
-        // Вниз (delta>0) — список уже в начале, остаток тянет лист вниз.
         return if (delta > 0f) {
             state.enqueueDrag(-delta)
             Offset(x = 0f, y = delta)
@@ -53,9 +45,7 @@ internal class SheetNestedScrollConnection(
     }
 
     override suspend fun onPreFling(available: Velocity): Velocity {
-        // Гейт по isDragging: раз драг стартовал, settle обязан завершиться, даже если доступность сменилась (всплыла IME).
         if (!state.isDragging) return Velocity.Zero
-        // Лист уже на rest-якоре — НЕ съедаем скорость (инерция списка продолжится); settle(0) лишь сбросит isDragging/overshoot.
         if (state.isOffsetAtRestAnchor()) {
             state.enqueueSettle(0f)
             return Velocity.Zero

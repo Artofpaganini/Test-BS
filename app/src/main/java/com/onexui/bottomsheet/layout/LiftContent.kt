@@ -12,11 +12,6 @@ import org.xplatform.uikit.compose.modifier.keyboard.lift.KeyboardLiftState
 import org.xplatform.uikit.compose.modifier.keyboard.shrink.withKeyboardShrink
 import kotlin.math.roundToInt
 
-/**
- * Lift-режим клавиатры: над IME едет ВЕСЬ контент. Вне FullScreen подъём делает withAdjustmentForKeyboard (весь
- * лист, в SheetContainer); в FullScreen лист у потолка -> низ поджимается: middle ужимается withKeyboardShrink,
- * bottom встаёт над клавиатурой. Нижний inset читается в measure-фазе — реакция на IME без рекомпозиции корня.
- */
 @Composable
 internal fun LiftContent(
     modifier: Modifier,
