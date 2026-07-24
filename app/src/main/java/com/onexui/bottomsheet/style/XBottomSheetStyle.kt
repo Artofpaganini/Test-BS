@@ -38,8 +38,12 @@ internal data class XBottomSheetStyle(
 
 internal fun defaultXBottomSheetStyle(): XBottomSheetStyle = XBottomSheetStyle(
     isOverlayBackground = true,
-    dragHandleStyle = DragHandleStyle.Theme,
-    additionalTop = AdditionalTopStyle(cornerRadius = 0.dp, backgroundColor = Color.Unspecified),
+    dragHandleStyle = DragHandleStyle.Theme(),
+    additionalTop = AdditionalTopStyle(
+        cornerRadius = 0.dp,
+        backgroundColor = Color.Unspecified,
+        peek = MAX_ADDITIONAL_TOP_PEEK,
+    ),
     colors = XBottomSheetColors(scrim = Color.Unspecified, sheetBackground = Color.Unspecified),
 )
 

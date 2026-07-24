@@ -21,8 +21,8 @@ internal fun DragHandle(
     modifier: Modifier = Modifier,
 ) {
     val color = when (style) {
-        DragHandleStyle.Theme -> XTheme.colors.separator
-        is DragHandleStyle.Static -> style.color.takeOrElse { StaticHandleDefaultColor }
+        is DragHandleStyle.Theme -> style.color.takeOrElse { XTheme.colors.separator }
+        DragHandleStyle.Static -> StaticHandleColor
     }
     Box(
         modifier = modifier
@@ -36,4 +36,4 @@ internal fun DragHandle(
 }
 
 private const val STATIC_HANDLE_ALPHA = 0.40f
-private val StaticHandleDefaultColor: Color = Color.White.copy(alpha = STATIC_HANDLE_ALPHA)
+private val StaticHandleColor: Color = Color.White.copy(alpha = STATIC_HANDLE_ALPHA)

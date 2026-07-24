@@ -168,7 +168,11 @@ internal fun XBottomSheet(
                         },
                     ),
             ) {
-                Box(modifier = Modifier.wrapContentHeight(align = Alignment.Top, unbounded = true)) {
+                Box(
+                    modifier = Modifier
+                        .wrapContentHeight(align = Alignment.Top, unbounded = true)
+                        .graphicsLayer { alpha = additionalTopFraction.value },
+                ) {
                     sheetScope.card()
                 }
             }
@@ -199,6 +203,7 @@ internal fun XBottomSheet(
             nestedScrollConnection = nestedScrollConnection,
             additionalTopFraction = additionalTopFraction,
             additionalTopOverlap = state.style.additionalTopOverlap,
+            additionalTopPeek = state.style.additionalTop.peek,
             detectBody = detectBody,
             placeBody = placeBody,
             additionalTopBody = additionalTopBody,

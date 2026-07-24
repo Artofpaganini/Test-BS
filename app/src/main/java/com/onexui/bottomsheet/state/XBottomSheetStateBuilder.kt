@@ -28,7 +28,6 @@ internal class XBottomSheetStateBuilder {
     internal fun buildState(): XBottomSheetState = XBottomSheetState(
         isSkipCollapsed = structureBuilder.isSkipCollapsed,
         isInitialLoading = structureBuilder.isInitialLoading,
-        peekFraction = structureBuilder.peekFraction,
         anchors = structureBuilder.buildAnchors(),
         behavior = behaviorBuilder.build(),
         style = styleBuilder.build(),

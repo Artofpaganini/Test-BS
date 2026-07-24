@@ -47,7 +47,7 @@ internal fun ObserveSheetState(
                 .collect { isSheetVisible -> if (!isSheetVisible) onSheetHidden() }
         }
         launch {
-            snapshotFlow(manager) { Triple(state.isSkipCollapsed, state.peekFraction, state.anchors) }
+            snapshotFlow(manager) { state.isSkipCollapsed to state.anchors }
                 .drop(1)
                 .distinctUntilChanged()
                 .collect { launch { state.onLiveConfigChanged() } }

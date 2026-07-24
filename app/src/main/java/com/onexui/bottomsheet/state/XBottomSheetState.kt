@@ -32,7 +32,6 @@ import kotlin.time.Duration.Companion.milliseconds
 internal class XBottomSheetState internal constructor(
     isSkipCollapsed: Boolean,
     val isInitialLoading: Boolean,
-    peekFraction: Float,
     anchors: Set<AnchorState>,
     behavior: XBottomSheetBehavior,
     style: XBottomSheetStyle,
@@ -64,7 +63,6 @@ internal class XBottomSheetState internal constructor(
         private set
 
     var isSkipCollapsed: Boolean by mutableStateOf(isSkipCollapsed)
-    var peekFraction: Float by mutableStateOf(peekFraction)
     var anchors: Set<AnchorState> by mutableStateOf(anchors)
         private set
 
@@ -200,7 +198,7 @@ internal class XBottomSheetState internal constructor(
 
     internal suspend fun onLiveConfigChanged() {
         val current = metrics ?: return
-        val rebuilt = current.copy(peekFraction = peekFraction, customAnchors = anchors)
+        val rebuilt = current.copy(customAnchors = anchors)
         metrics = rebuilt
         val table = rebuilt.toAnchorTable(isSkipCollapsed)
         anchorTable = table
@@ -251,7 +249,6 @@ internal class XBottomSheetState internal constructor(
             statusBarPx = statusBarPx,
             contentHeightPx = contentHeightPx,
             loadingSheetHeightPx = loadingSheetHeightPx,
-            peekFraction = peekFraction,
             customAnchors = anchors,
         )
         metrics = updated

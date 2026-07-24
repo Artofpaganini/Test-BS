@@ -34,6 +34,7 @@ internal fun SheetContainer(
     nestedScrollConnection: SheetNestedScrollConnection,
     additionalTopFraction: Animatable<Float, AnimationVector1D>,
     additionalTopOverlap: Dp,
+    additionalTopPeek: Dp,
     detectBody: @Composable () -> Unit,
     placeBody: @Composable () -> Unit,
     additionalTopBody: (@Composable () -> Unit)?,
@@ -68,10 +69,12 @@ internal fun SheetContainer(
             Constraints.fixed(width = width, height = sheetHeight),
         )
         val overlapPx = additionalTopOverlap.roundToPx()
+        val additionalTopPeekPx = additionalTopPeek.roundToPx()
         val cardMeasurable = additionalTopBody?.let { subcompose(SLOT_ADDITIONAL_TOP, it).firstOrNull() }
         val cardVisibleHeight = if (cardMeasurable != null) {
             val cardNatural = cardMeasurable.maxIntrinsicHeight(width)
-            (additionalTopFraction.value.coerceIn(0f, 1f) * (cardNatural - overlapPx).coerceAtLeast(0)).roundToInt()
+            val expandedVisible = (cardNatural - overlapPx).coerceAtLeast(additionalTopPeekPx)
+            (additionalTopPeekPx + additionalTopFraction.value.coerceIn(0f, 1f) * (expandedVisible - additionalTopPeekPx)).roundToInt()
         } else {
             0
         }

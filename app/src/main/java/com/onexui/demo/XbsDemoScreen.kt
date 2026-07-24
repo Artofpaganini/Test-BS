@@ -88,11 +88,11 @@ private enum class DemoCase(val label: String) {
     O("(o) Контент: LazyColumn + LazyRow (карусели)"),
     P("(p) Контент: Column + verticalScroll"),
     Q("(q) Контент: LazyColumn + вложенный LazyColumn"),
-    R("(r) Кастомный якорь 50% (свайп: peek → 50% → full)"),
+    R("(r) Кастомный якорь 50% (свайп: collapsed → 50% → full)"),
     T("(t) AdditionalTop + короткий контент (wrap)"),
     U("(u) Loading + поиск: IME во время Loading"),
     V("(v) predictive back — isBackPressEnabled=true"),
-    W("(w) live-ручки: peekFraction + anchors"),
+    W("(w) live-ручки: anchors"),
 }
 
 private val SPORTS: List<String> = listOf(
@@ -198,8 +198,8 @@ private fun XbsCaseHost(case: DemoCase, onClose: () -> Unit) {
     }
 }
 
-// (r) Кастомный якорь: между Collapsed(peek) и Expanded(full) добавлен свой якорь 50% экрана. Свайп по листу
-// останавливается на ближайшем из якорей: peek(2/3) / 50% / full. Разраб задаёт свои через customAnchors.
+// (r) Кастомный якорь: между Collapsed(60%) и Expanded(full) добавлен свой якорь 50% экрана. Свайп по листу
+// останавливается на ближайшем из якорей: Collapsed(60%) / 50% / full. Разраб задаёт свои через customAnchors.
 @Composable
 private fun CaseCustomAnchor(onClose: () -> Unit) {
     val state = rememberXBottomSheetState { structure { anchors(Fraction(HALF_ANCHOR_FRACTION)) } }
@@ -213,7 +213,7 @@ private fun CaseCustomAnchor(onClose: () -> Unit) {
     }
 }
 
-// (m) Контент = LazyVerticalGrid: сетка заполняет доступную высоту → fill-режим (Collapsed peek / Expanded).
+// (m) Контент = LazyVerticalGrid: сетка заполняет доступную высоту → fill-режим (Collapsed 60% / Expanded).
 @Composable
 private fun CaseGrid(onClose: () -> Unit) {
     val state = rememberXBottomSheetState()
@@ -454,7 +454,7 @@ private fun CaseNoHandle(onClose: () -> Unit) {
 @Composable
 private fun CaseAdditionalTop(onClose: () -> Unit) {
     val state = rememberXBottomSheetState {
-        style { additionalTop { cornerRadius = 16.dp } }
+        style { additionalTop { cornerRadius = 16.dp; backgroundColor = Color(0xFF3E6287) } }
     }
     LaunchedEffect(Unit) { state.show() }
     val isCollapsed = state.additionalTopState == AdditionalTopState.Collapsed
@@ -576,7 +576,7 @@ private fun CaseNoDismiss(onClose: () -> Unit) {
 private fun CaseStaticGrow(onClose: () -> Unit) {
     val state = rememberXBottomSheetState {
         structure { isSkipCollapsed = true }
-        style { dragHandleStyle = DragHandleStyle.Static(Color.Unspecified) }
+        style { dragHandleStyle = DragHandleStyle.Static }
     }
     var itemCount by remember { mutableStateOf(4) }
     LaunchedEffect(Unit) { state.show() }
@@ -603,12 +603,12 @@ private fun CaseStaticGrow(onClose: () -> Unit) {
     }
 }
 
-// (t) AdditionalTop + короткий контент: лист открывается по высоте контента (Content), а не peek. Карточка + тоггл
+// (t) AdditionalTop + короткий контент: лист открывается по высоте контента (Content), а не Collapsed. Карточка + тоггл
 // через scope.additionalTopState (var). Слепая зона E1: sticky-слой поверх wrap-контента.
 @Composable
 private fun CaseAdditionalTopWrap(onClose: () -> Unit) {
     val state = rememberXBottomSheetState {
-        style { additionalTop { cornerRadius = 16.dp } }
+        style { additionalTop { cornerRadius = 16.dp; backgroundColor = Color(0xFF3E6287) } }
     }
     LaunchedEffect(Unit) { state.show() }
     XBottomSheet(
@@ -629,7 +629,7 @@ private fun CaseAdditionalTopWrap(onClose: () -> Unit) {
             )
         },
     ) {
-        PresetBodyText("Короткий контент → лист открывается по высоте контента (Content), не peek. Карточка additionalTop сверху; кнопка переключает Expanded/Collapsed через scope.")
+        PresetBodyText("Короткий контент → лист открывается по высоте контента (Content), не Collapsed. Карточка additionalTop сверху; кнопка переключает Expanded/Collapsed через scope.")
     }
 }
 
@@ -674,28 +674,24 @@ private fun CasePredictiveBack(onClose: () -> Unit) {
     }
 }
 
-// (w) Живые ручки стейта: peekFraction и anchors меняются прямо в композиции — покоящийся лист доезжает к новому
-// якорю сам, без жеста. Кнопка «peek» двигает Collapsed-якорь (лист на нём — переезжает сразу). Кнопка «средний
-// якорь» правит кастомный rest-стоп: свайпни лист на него, затем меняй высоту — лист переедет между 50% и 33%.
-// Шапка показывает текущий стейт и обе доли, чтобы смена невидимого якоря читалась на экране.
+// (w) Живые ручки стейта: anchors меняются прямо в композиции — покоящийся лист доезжает к новому якорю сам,
+// без жеста. Кнопка «средний якорь» правит кастомный rest-стоп: свайпни лист на него, затем меняй высоту —
+// лист переедет между 50% и 33%. Шапка показывает текущий стейт и долю среднего якоря.
 @Composable
 private fun CaseLiveHandles(onClose: () -> Unit) {
     val state = rememberXBottomSheetState { structure { anchors(Fraction(MID_DEFAULT_FRACTION)) } }
-    var isWidePeek by remember { mutableStateOf(false) }
     var isLowMid by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { state.show() }
     XBottomSheet(
         state = state,
         onDismissRequest = { state.hide(); onClose() },
         top = {
-            val peekFraction = if (isWidePeek) PEEK_WIDE_FRACTION else PEEK_DEFAULT_FRACTION
             val midFraction = if (isLowMid) MID_LOW_FRACTION else MID_DEFAULT_FRACTION
             val isOnMidAnchor = sheetValue is SheetValue.Custom
             PresetTitle("Живые ручки стейта")
             PresetBodyText("Стейт листа: ${describeSheetValue(sheetValue)}")
             PresetBodyText(
-                "Якорь = высота листа снизу, доля экрана. " +
-                    "peek ${formatFractionPercent(peekFraction)} · средний ${formatFractionPercent(midFraction)}",
+                "Якорь = высота листа снизу, доля экрана. средний ${formatFractionPercent(midFraction)}",
             )
             PresetBodyText(
                 if (isOnMidAnchor) {
@@ -711,13 +707,6 @@ private fun CaseLiveHandles(onClose: () -> Unit) {
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Button(
-                    onClick = {
-                        isWidePeek = !isWidePeek
-                        state.peekFraction = if (isWidePeek) PEEK_WIDE_FRACTION else PEEK_DEFAULT_FRACTION
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text(text = if (isWidePeek) "peek → 2/3" else "peek → 1/2") }
                 Button(
                     onClick = {
                         isLowMid = !isLowMid
@@ -738,7 +727,7 @@ private fun formatFractionPercent(fraction: Float): String =
 private fun describeSheetValue(value: SheetValue): String = when (value) {
     SheetValue.Hidden -> "Hidden — закрыт"
     SheetValue.Content -> "Content — высота по контенту"
-    SheetValue.Collapsed -> "Collapsed — стоит на peek-якоре"
+    SheetValue.Collapsed -> "Collapsed — стоит на 60%-якоре"
     SheetValue.ExpandedContent -> "ExpandedContent — раскрыт по контенту"
     SheetValue.ExpandedFullScreen -> "ExpandedFullScreen — во весь экран"
     SheetValue.Loading -> "Loading — якорь лоадера"
@@ -776,8 +765,6 @@ private fun AdditionalTopCard(isCollapsed: Boolean) {
 }
 
 private const val LOADING_DELAY_MS = 2000L
-private const val PEEK_DEFAULT_FRACTION = 2f / 3f
-private const val PEEK_WIDE_FRACTION = 0.5f
 private const val MID_DEFAULT_FRACTION = 0.5f
 private const val MID_LOW_FRACTION = 0.33f
 private const val HALF_ANCHOR_FRACTION = 0.5f

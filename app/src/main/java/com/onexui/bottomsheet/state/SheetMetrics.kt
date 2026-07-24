@@ -8,12 +8,11 @@ internal data class SheetMetrics(
     val statusBarPx: Int,
     val contentHeightPx: Int,
     val loadingSheetHeightPx: Int,
-    val peekFraction: Float,
     val customAnchors: Set<AnchorState>,
 ) {
     val maxHeightPx: Int get() = (screenHeightPx - statusBarPx).coerceAtLeast(0)
 
-    val peekPx: Int get() = (screenHeightPx * peekFraction).roundToInt().coerceIn(0, maxHeightPx)
+    val collapsedPx: Int get() = (screenHeightPx * COLLAPSED_FRACTION).roundToInt().coerceIn(0, maxHeightPx)
 
     val isFillMode: Boolean get() = contentHeightPx >= maxHeightPx
 
@@ -23,8 +22,12 @@ internal data class SheetMetrics(
             fraction != null -> (screenHeightPx * fraction).roundToInt()
             anchor is AnchorState.FullScreen -> maxHeightPx
             anchor is AnchorState.WrapContent -> minOf(contentHeightPx, maxHeightPx)
-            else -> peekPx
+            else -> collapsedPx
         }
         return px.coerceIn(0, maxHeightPx)
+    }
+
+    private companion object {
+        const val COLLAPSED_FRACTION = 0.60f
     }
 }
