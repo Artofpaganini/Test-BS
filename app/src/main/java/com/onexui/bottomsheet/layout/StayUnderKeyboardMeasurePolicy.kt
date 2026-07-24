@@ -22,7 +22,7 @@ internal class StayUnderKeyboardMeasurePolicy(
         val width = constraints.maxWidth
         val navBarPx = navBarState.value
         val keyboardHeightPx = keyboardState.value.keyboardHeight.roundToInt().coerceAtLeast(0)
-        val isKeyboardVisible = keyboardHeightPx > 0
+        val navReservePx = (navBarPx - keyboardHeightPx).coerceAtLeast(0)
         val bottomPlaceable = measurables[1].measure(
             constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity),
         )
@@ -38,12 +38,12 @@ internal class StayUnderKeyboardMeasurePolicy(
             }
         }
         val height = constraints.maxHeight
-        val reservePx = if (isKeyboardVisible) keyboardHeightPx else bottomHeight + navBarPx
+        val reservePx = maxOf(keyboardHeightPx, bottomHeight + navReservePx)
         val middleMaxHeight = (height - reservePx).coerceAtLeast(0)
         val middlePlaceable = measurables[0].measure(
             constraints.copy(minHeight = 0, maxHeight = middleMaxHeight),
         )
-        val bottomY = if (isKeyboardVisible) height - bottomHeight else height - bottomHeight - navBarPx
+        val bottomY = height - bottomHeight - navReservePx
         return layout(width, height) {
             middlePlaceable.place(x = 0, y = 0)
             bottomPlaceable.place(x = 0, y = bottomY.coerceAtLeast(0))

@@ -116,7 +116,7 @@ internal fun XBottomSheet(
         state.updateDismissScope(dismissScope)
         state.updateDismissRequest(onDismiss)
         state.updateKeyboardState(keyboardState)
-        state.updateAlwaysFullScreenOnIme(
+        state.updateAlwaysFullScreenWithKeyboard(
             state.behavior.bottomBehaviorWithKeyboard == BottomKeyboardBehavior.StayUnderKeyboard && bottom != null,
         )
         sheetScope.updateKeyboardController(keyboardController)
