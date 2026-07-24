@@ -170,8 +170,7 @@ internal fun XBottomSheet(
             ) {
                 Box(
                     modifier = Modifier
-                        .wrapContentHeight(align = Alignment.Top, unbounded = true)
-                        .graphicsLayer { alpha = additionalTopFraction.value },
+                        .wrapContentHeight(align = Alignment.Top, unbounded = true),
                 ) {
                     sheetScope.card()
                 }

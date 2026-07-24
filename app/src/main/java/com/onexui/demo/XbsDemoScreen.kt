@@ -454,7 +454,8 @@ private fun CaseNoHandle(onClose: () -> Unit) {
 @Composable
 private fun CaseAdditionalTop(onClose: () -> Unit) {
     val state = rememberXBottomSheetState {
-        style { additionalTop { cornerRadius = 16.dp; backgroundColor = Color(0xFF3E6287) } }
+        style { additionalTop { cornerRadius = 16.dp; backgroundColor = Color(0xFF3E6287)
+            peek = 0.dp} }
     }
     LaunchedEffect(Unit) { state.show() }
     val isCollapsed = state.additionalTopState == AdditionalTopState.Collapsed
