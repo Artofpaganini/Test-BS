@@ -202,7 +202,7 @@ private fun XbsCaseHost(case: DemoCase, onClose: () -> Unit) {
 // останавливается на ближайшем из якорей: peek(2/3) / 50% / full. Разраб задаёт свои через customAnchors.
 @Composable
 private fun CaseCustomAnchor(onClose: () -> Unit) {
-    val state = rememberXBottomSheetState { structure { anchors { +Fraction(HALF_ANCHOR_FRACTION) } } }
+    val state = rememberXBottomSheetState { structure { anchors(Fraction(HALF_ANCHOR_FRACTION)) } }
     LaunchedEffect(Unit) { state.show() }
     XBottomSheet(
         state = state,
@@ -680,7 +680,7 @@ private fun CasePredictiveBack(onClose: () -> Unit) {
 // Шапка показывает текущий стейт и обе доли, чтобы смена невидимого якоря читалась на экране.
 @Composable
 private fun CaseLiveHandles(onClose: () -> Unit) {
-    val state = rememberXBottomSheetState { structure { anchors { +Fraction(MID_DEFAULT_FRACTION) } } }
+    val state = rememberXBottomSheetState { structure { anchors(Fraction(MID_DEFAULT_FRACTION)) } }
     var isWidePeek by remember { mutableStateOf(false) }
     var isLowMid by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { state.show() }
@@ -721,7 +721,7 @@ private fun CaseLiveHandles(onClose: () -> Unit) {
                 Button(
                     onClick = {
                         isLowMid = !isLowMid
-                        state.anchors { +Fraction(if (isLowMid) MID_LOW_FRACTION else MID_DEFAULT_FRACTION) }
+                        state.anchors(Fraction(if (isLowMid) MID_LOW_FRACTION else MID_DEFAULT_FRACTION))
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(text = if (isLowMid) "средний якорь → 50%" else "средний якорь → 33%") }

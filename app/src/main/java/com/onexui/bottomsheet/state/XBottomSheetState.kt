@@ -96,9 +96,9 @@ internal class XBottomSheetState internal constructor(
             return (offset.value / maxHeightPx).coerceIn(0f, 1f)
         }
 
-    /** Меняет набор кастомных rest-якорей той же DSL-грамматикой, что и билдер (`+Fraction(0.5f)`). */
-    fun anchors(configure: XSheetAnchorsBuilder.() -> Unit) {
-        val updated = XSheetAnchorsBuilder().apply(configure).build()
+    /** Меняет набор кастомных rest-якорей той же грамматикой, что и билдер (`Fraction(0.5f)`, `FullScreen`). */
+    fun anchors(vararg states: AnchorState) {
+        val updated = states.toSet()
         if (updated == anchors) return
         anchors = updated
     }

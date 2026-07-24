@@ -2,7 +2,6 @@ package com.onexui.bottomsheet.state.builder
 
 import com.onexui.bottomsheet.anchor.AnchorState
 import com.onexui.bottomsheet.config.XBottomSheetDsl
-import com.onexui.bottomsheet.state.XSheetAnchorsBuilder
 
 @XBottomSheetDsl
 internal class StructureBuilder {
@@ -10,13 +9,13 @@ internal class StructureBuilder {
     var isInitialLoading: Boolean = false
     var peekFraction: Float = DEFAULT_PEEK_FRACTION
 
-    internal val anchorsBuilder = XSheetAnchorsBuilder()
+    private var anchors: Set<AnchorState> = emptySet()
 
-    inline fun anchors(configure: XSheetAnchorsBuilder.() -> Unit) {
-        anchorsBuilder.configure()
+    fun anchors(vararg states: AnchorState) {
+        anchors = states.toSet()
     }
 
-    internal fun buildAnchors(): Set<AnchorState> = anchorsBuilder.build()
+    internal fun buildAnchors(): Set<AnchorState> = anchors
 
     private companion object {
         const val DEFAULT_PEEK_FRACTION = 2f / 3f
