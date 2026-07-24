@@ -68,31 +68,30 @@ internal fun XbsDemoTheme(content: @Composable () -> Unit) {
 }
 
 // Кейсы матрицы состояний. Один активный кейс = один XBottomSheet на экран: открытие нового кейса закрывает
-// предыдущий (при открытом листе scrim перекрывает кнопки — второй кейс запускается после закрытия).
+// предыдущий (при открытом листе scrim перекрывает кнопки - второй кейс запускается после закрытия).
 private enum class DemoCase(val label: String) {
-    A("(a) Content — выход из аккаунта"),
-    B1("(b1) Expand → ExpandedContent (средний список)"),
-    B2("(b2) Expand → ExpandedFullScreen (огромный список)"),
+    A("(a) Content - выход из аккаунта"),
+    B1("(b1) Expand -> ExpandedContent (средний список)"),
+    B2("(b2) Expand -> ExpandedFullScreen (огромный список)"),
     C("(c) isSkipCollapsed = true"),
-    D("(d) Loading → markContentReady"),
+    D("(d) Loading -> markContentReady"),
     E("(e) isOverlayBackground = false (тень)"),
     F("(f) dragHandle = null"),
-    G("(g) Additional Top — купон / отслеживать"),
-    I("(i) IME — поиск: подъём / авто-FullScreen + shrink"),
-    L("(l) IME — поиск + список + bottom ПОД клавиатурой"),
-    S("(s) IME — поиск + список + bottom НАД клавиатурой"),
-    J("(j) Закрытия выключены — только кнопкой"),
-    K("(k) Static handle + рост контента → авто-FullScreen"),
+    G("(g) Additional Top - купон / отслеживать"),
+    I("(i) IME - поиск: подъём / авто-FullScreen + shrink"),
+    L("(l) IME - поиск + список + bottom ПОД клавиатурой"),
+    S("(s) IME - поиск + список + bottom НАД клавиатурой"),
+    J("(j) Закрытия выключены - только кнопкой"),
+    K("(k) Static handle + рост контента -> авто-FullScreen"),
     M("(m) Контент: LazyVerticalGrid (сетка 2 кол.)"),
-    N("(n) Контент: LazyRow (гориз., короткий → wrap)"),
+    N("(n) Контент: LazyRow (гориз., короткий -> wrap)"),
     O("(o) Контент: LazyColumn + LazyRow (карусели)"),
     P("(p) Контент: Column + verticalScroll"),
     Q("(q) Контент: LazyColumn + вложенный LazyColumn"),
-    R("(r) Кастомный якорь 50% (свайп: collapsed → 50% → full)"),
+    R("(r) Доп кастомный якоря 20% и 80%"),
     T("(t) AdditionalTop + короткий контент (wrap)"),
     U("(u) Loading + поиск: IME во время Loading"),
-    V("(v) predictive back — isBackPressEnabled=true"),
-    W("(w) live-ручки: anchors"),
+    V("(v) predictive back - isBackPressEnabled=true"),
 }
 
 private val SPORTS: List<String> = listOf(
@@ -110,7 +109,7 @@ private val MarkerColors: List<Color> = listOf(
     Color(0xFFEF5350), Color(0xFF42A5F5), Color(0xFF66BB6A), Color(0xFFFFA726), Color(0xFFAB47BC),
 )
 
-// LazyColumn сам скроллит. fillMaxWidth (не fillMaxSize): высота wrap'ится → мало айтемов wrap-режим, много fill.
+// LazyColumn сам скроллит. fillMaxWidth (не fillMaxSize): высота wrap'ится -> мало айтемов wrap-режим, много fill.
 // Клик по строке закрывает лист через scope (requestDismiss), поэтому это extension XBottomSheetScope.
 @Composable
 private fun XBottomSheetScope.SportLazyList(sports: List<String>) {
@@ -127,7 +126,7 @@ private fun XBottomSheetScope.SportLazyList(sports: List<String>) {
 
 @Composable
 internal fun XbsDemoScreen() {
-    // saveable, чтобы активный кейс (а с ним стейт листа) переживал ротацию — иначе демо-хост сбросился бы в null.
+    // saveable, чтобы активный кейс (а с ним стейт листа) переживал ротацию - иначе демо-хост сбросился бы в null.
     var activeCase by rememberSaveable(
         stateSaver = Saver(
             save = { case -> case?.name ?: "" },
@@ -137,9 +136,11 @@ internal fun XbsDemoScreen() {
             },
         ),
     ) { mutableStateOf<DemoCase?>(null) }
-    Box(modifier = Modifier
-        .fillMaxSize()
-        .background(MaterialTheme.colorScheme.background)) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -161,7 +162,7 @@ internal fun XbsDemoScreen() {
             }
         }
         activeCase?.let { case ->
-            // key(case) — пересоздаём хост при смене кейса (свежий стейт листа).
+            // key(case) - пересоздаём хост при смене кейса (свежий стейт листа).
             key(case) {
                 XbsCaseHost(case = case, onClose = { activeCase = null })
             }
@@ -194,7 +195,6 @@ private fun XbsCaseHost(case: DemoCase, onClose: () -> Unit) {
         DemoCase.T -> CaseAdditionalTopWrap(onClose)
         DemoCase.U -> CaseLoadingImeSearch(onClose)
         DemoCase.V -> CasePredictiveBack(onClose)
-        DemoCase.W -> CaseLiveHandles(onClose)
     }
 }
 
@@ -202,18 +202,18 @@ private fun XbsCaseHost(case: DemoCase, onClose: () -> Unit) {
 // останавливается на ближайшем из якорей: Collapsed(60%) / 50% / full. Разраб задаёт свои через customAnchors.
 @Composable
 private fun CaseCustomAnchor(onClose: () -> Unit) {
-    val state = rememberXBottomSheetState { structure { anchors(Fraction(HALF_ANCHOR_FRACTION)) } }
+    val state = rememberXBottomSheetState { structure { anchors(Fraction(0.8f), Fraction(0.2f)) } }
     LaunchedEffect(Unit) { state.show() }
     XBottomSheet(
         state = state,
         onDismissRequest = { state.hide(); onClose() },
-        top = { PresetTitle("Кастомный якорь 50%") },
+        top = { PresetTitle("Кастомный якоря 20% и 80%") },
     ) {
         SportLazyList(SPORTS)
     }
 }
 
-// (m) Контент = LazyVerticalGrid: сетка заполняет доступную высоту → fill-режим (Collapsed 60% / Expanded).
+// (m) Контент = LazyVerticalGrid: сетка заполняет доступную высоту -> fill-режим (Collapsed 60% / Expanded).
 @Composable
 private fun CaseGrid(onClose: () -> Unit) {
     val state = rememberXBottomSheetState()
@@ -229,7 +229,7 @@ private fun CaseGrid(onClose: () -> Unit) {
     }
 }
 
-// (n) Контент = LazyRow (горизонтальный, короткий по высоте) → wrap-режим: лист по высоте контента.
+// (n) Контент = LazyRow (горизонтальный, короткий по высоте) -> wrap-режим: лист по высоте контента.
 @Composable
 private fun CaseLazyRow(onClose: () -> Unit) {
     val state = rememberXBottomSheetState()
@@ -242,9 +242,11 @@ private fun CaseLazyRow(onClose: () -> Unit) {
         },
         top = { PresetTitle("Горизонтальный (LazyRow)") },
     ) {
-        LazyRow(modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 16.dp)) {
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp)
+        ) {
             items(SPORTS) { sport ->
                 Box(
                     modifier = Modifier
@@ -258,7 +260,7 @@ private fun CaseLazyRow(onClose: () -> Unit) {
     }
 }
 
-// (o) Контент = LazyColumn с вложенными LazyRow (вертикальный список каруселей). Заполняет → fill-режим.
+// (o) Контент = LazyColumn с вложенными LazyRow (вертикальный список каруселей). Заполняет -> fill-режим.
 // Вертикальный скролл листа и горизонтальный скролл каруселей не конфликтуют (разные оси).
 @Composable
 private fun CaseCarousels(onClose: () -> Unit) {
@@ -272,9 +274,11 @@ private fun CaseCarousels(onClose: () -> Unit) {
         LazyColumn(modifier = Modifier.fillMaxWidth(), state = rememberLazyListState()) {
             items(12) { row ->
                 PresetBodyText("Категория ${row + 1}")
-                LazyRow(modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp)) {
+                LazyRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp)
+                ) {
                     items(SPORTS) { sport ->
                         Box(
                             modifier = Modifier
@@ -290,7 +294,7 @@ private fun CaseCarousels(onClose: () -> Unit) {
     }
 }
 
-// (p) Контент = Column + verticalScroll (не Lazy). Длинный → заполняет → fill-режим; короткий был бы wrap.
+// (p) Контент = Column + verticalScroll (не Lazy). Длинный -> заполняет -> fill-режим; короткий был бы wrap.
 @Composable
 private fun CaseVerticalScroll(onClose: () -> Unit) {
     val state = rememberXBottomSheetState()
@@ -300,9 +304,11 @@ private fun CaseVerticalScroll(onClose: () -> Unit) {
         onDismissRequest = { state.hide(); onClose() },
         top = { PresetTitle("Column + verticalScroll") },
     ) {
-        Column(modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+        ) {
             SPORTS.forEachIndexed { index, sport ->
                 PresetMenuCell(
                     title = sport,
@@ -325,11 +331,13 @@ private fun CaseNestedLazyColumn(onClose: () -> Unit) {
         top = { PresetTitle("Вложенный LazyColumn") },
     ) {
         LazyColumn(modifier = Modifier.fillMaxWidth(), state = rememberLazyListState()) {
-            item { PresetBodyText("Внешний LazyColumn. Ниже — вложенный LazyColumn фикс. высоты (свой скролл):") }
+            item { PresetBodyText("Внешний LazyColumn. Ниже - вложенный LazyColumn фикс. высоты (свой скролл):") }
             item {
-                LazyColumn(modifier = Modifier
-                    .fillMaxWidth()
-                    .height(300.dp)) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(300.dp)
+                ) {
                     items(SPORTS) { sport -> PresetMenuCell(title = sport, onClick = { requestDismiss() }) }
                 }
             }
@@ -353,7 +361,7 @@ private fun CaseContent(onClose: () -> Unit) {
     }
 }
 
-// (b1) Средний список: контент > 60% (открытие Collapsed), но ≤ экрана → свайп вверх даёт ExpandedContent
+// (b1) Средний список: контент > 60% (открытие Collapsed), но ≤ экрана -> свайп вверх даёт ExpandedContent
 // (высота по контенту, лимит Status Bar), а не FullScreen.
 @Composable
 private fun CaseMediumList(onClose: () -> Unit) {
@@ -368,7 +376,7 @@ private fun CaseMediumList(onClose: () -> Unit) {
     }
 }
 
-// (b2) Огромный список: контент > экрана (открытие Collapsed) → свайп вверх даёт ExpandedFullScreen (весь экран).
+// (b2) Огромный список: контент > экрана (открытие Collapsed) -> свайп вверх даёт ExpandedFullScreen (весь экран).
 @Composable
 private fun CaseHugeList(onClose: () -> Unit) {
     val state = rememberXBottomSheetState()
@@ -382,8 +390,8 @@ private fun CaseHugeList(onClose: () -> Unit) {
     }
 }
 
-// (c) isSkipCollapsed = true: контент БЕЗ лимита 60% (лимит — Status Bar). Длинный список (>экрана) → открытие
-// сразу ExpandedFullScreen, минуя Collapsed (без skip был бы Collapsed 60%) — видна ветка skip.
+// (c) isSkipCollapsed = true: контент БЕЗ лимита 60% (лимит - Status Bar). Длинный список (>экрана) -> открытие
+// сразу ExpandedFullScreen, минуя Collapsed (без skip был бы Collapsed 60%) - видна ветка skip.
 @Composable
 private fun CaseSkipCollapsed(onClose: () -> Unit) {
     val state = rememberXBottomSheetState { structure { isSkipCollapsed = true } }
@@ -397,7 +405,7 @@ private fun CaseSkipCollapsed(onClose: () -> Unit) {
     }
 }
 
-// (d) Loading → markContentReady: isInitialLoading, show() → Loading 192dp/Loader, задержка → markContentReady() → анимация.
+// (d) Loading -> markContentReady: isInitialLoading, show() -> Loading 192dp/Loader, задержка -> markContentReady() -> анимация.
 @Composable
 private fun CaseLoading(onClose: () -> Unit) {
     val state = rememberXBottomSheetState { structure { isInitialLoading = true } }
@@ -432,7 +440,7 @@ private fun CaseNoOverlay(onClose: () -> Unit) {
     }
 }
 
-// (f) dragHandle = null: хендл скрыт, взаимодействие с высотой отключено (нет свайпа/expand). Закрытие — тап/кнопка.
+// (f) dragHandle = null: хендл скрыт, взаимодействие с высотой отключено (нет свайпа/expand). Закрытие - тап/кнопка.
 @Composable
 private fun CaseNoHandle(onClose: () -> Unit) {
     val state = rememberXBottomSheetState {
@@ -454,8 +462,12 @@ private fun CaseNoHandle(onClose: () -> Unit) {
 @Composable
 private fun CaseAdditionalTop(onClose: () -> Unit) {
     val state = rememberXBottomSheetState {
-        style { additionalTop { cornerRadius = 16.dp; backgroundColor = Color(0xFF3E6287)
-            peek = 0.dp} }
+        style {
+            additionalTop {
+                cornerRadius = 16.dp; backgroundColor = Color(0xFF3E6287)
+                peek = 0.dp
+            }
+        }
     }
     LaunchedEffect(Unit) { state.show() }
     val isCollapsed = state.additionalTopState == AdditionalTopState.Collapsed
@@ -481,8 +493,8 @@ private fun CaseAdditionalTop(onClose: () -> Unit) {
     }
 }
 
-// (i) IME: SearchField в top + короткий список. Фокус на поле → лист поднимается (withAdjustmentForKeyboard),
-// а т.к. места короткому листу не хватает → авто-переход в ExpandedFullScreen + сжатие Middle (withKeyboardShrink).
+// (i) IME: SearchField в top + короткий список. Фокус на поле -> лист поднимается (withAdjustmentForKeyboard),
+// а т.к. места короткому листу не хватает -> авто-переход в ExpandedFullScreen + сжатие Middle (withKeyboardShrink).
 // Закрытие листа скрывает IME (фокус уходит вместе с листом).
 @Composable
 private fun CaseImeSearch(onClose: () -> Unit) {
@@ -528,7 +540,7 @@ private fun CaseImeBottomUnderKeyboard(onClose: () -> Unit) {
 }
 
 // (s) Дефолтный подъём над клавиатурой: bottomKeyboardBehavior = Lift (значение по умолчанию). При фокусе на
-// поиске лист разворачивается в FullScreen и над клавиатурой поднимается ВЕСЬ контент, включая bottom-кнопку —
+// поиске лист разворачивается в FullScreen и над клавиатурой поднимается ВЕСЬ контент, включая bottom-кнопку -
 // она едет вверх вместе с top+middle и остаётся видимой прямо над клавиатурой. Противоположность кейсу (l),
 // где bottom, наоборот, прижат к нижней кромке листа и уходит ПОД клавиатуру.
 @Composable
@@ -552,7 +564,7 @@ private fun CaseImeBottomAboveKeyboard(onClose: () -> Unit) {
     }
 }
 
-// (j) Все способы закрытия опциональны: isDismissOnOutsideTap=false, isDismissOnSwipeDown=false — закрыть можно
+// (j) Все способы закрытия опциональны: isDismissOnOutsideTap=false, isDismissOnSwipeDown=false - закрыть можно
 // ТОЛЬКО кнопкой (requestDismiss).
 @Composable
 private fun CaseNoDismiss(onClose: () -> Unit) {
@@ -566,12 +578,12 @@ private fun CaseNoDismiss(onClose: () -> Unit) {
         top = { PresetTitle("Закрытия выключены") },
         bottom = { PresetSingleButton(text = "Закрыть", onClick = { requestDismiss() }) },
     ) {
-        PresetBodyText("isDismissOnOutsideTap = false, isDismissOnSwipeDown = false. Тап вне листа и свайп вниз не закрывают — только кнопка.")
+        PresetBodyText("isDismissOnOutsideTap = false, isDismissOnSwipeDown = false. Тап вне листа и свайп вниз не закрывают - только кнопка.")
     }
 }
 
-// (k) DragHandle.Static + рост контента: кнопка в Middle добавляет элементы → onContentRemeasured тянет высоту
-// за контентом; при isSkipCollapsed=true и росте выше экрана срабатывает ветка «контент вырос выше экрана» →
+// (k) DragHandle.Static + рост контента: кнопка в Middle добавляет элементы -> onContentRemeasured тянет высоту
+// за контентом; при isSkipCollapsed=true и росте выше экрана срабатывает ветка «контент вырос выше экрана» ->
 // авто-переход в ExpandedFullScreen.
 @Composable
 private fun CaseStaticGrow(onClose: () -> Unit) {
@@ -630,12 +642,12 @@ private fun CaseAdditionalTopWrap(onClose: () -> Unit) {
             )
         },
     ) {
-        PresetBodyText("Короткий контент → лист открывается по высоте контента (Content), не Collapsed. Карточка additionalTop сверху; кнопка переключает Expanded/Collapsed через scope.")
+        PresetBodyText("Короткий контент -> лист открывается по высоте контента (Content), не Collapsed. Карточка additionalTop сверху; кнопка переключает Expanded/Collapsed через scope.")
     }
 }
 
 // (u) Loading + поиск: IME во время Loading. Слепая зона L5: фокус в поиске во время Loading, markContentReady
-// под открытой клавиатурой → авто-FullScreen (верх листа не уходит за потолок).
+// под открытой клавиатурой -> авто-FullScreen (верх листа не уходит за потолок).
 @Composable
 private fun CaseLoadingImeSearch(onClose: () -> Unit) {
     val state = rememberXBottomSheetState { structure { isInitialLoading = true } }
@@ -658,7 +670,7 @@ private fun CaseLoadingImeSearch(onClose: () -> Unit) {
     }
 }
 
-// (v) predictive back: dismiss.isBackPressEnabled=true → back-жест (Android 14+ gesture nav) визуально двигает лист за
+// (v) predictive back: dismiss.isBackPressEnabled=true -> back-жест (Android 14+ gesture nav) визуально двигает лист за
 // прогрессом. Кнопочный back и API<34 закрывают мгновенно как раньше.
 @Composable
 private fun CasePredictiveBack(onClose: () -> Unit) {
@@ -671,12 +683,12 @@ private fun CasePredictiveBack(onClose: () -> Unit) {
         onDismissRequest = { state.hide(); onClose() },
         top = { PresetTitle("Predictive back") },
     ) {
-        PresetBodyText("dismiss.isBackPressEnabled = true: back-жест (Android 14+) визуально двигает лист за пальцем. Отпустить — лист закрывается; отменить — возвращается на место.")
+        PresetBodyText("dismiss.isBackPressEnabled = true: back-жест (Android 14+) визуально двигает лист за пальцем. Отпустить - лист закрывается; отменить - возвращается на место.")
     }
 }
 
-// (w) Живые ручки стейта: anchors меняются прямо в композиции — покоящийся лист доезжает к новому якорю сам,
-// без жеста. Кнопка «средний якорь» правит кастомный rest-стоп: свайпни лист на него, затем меняй высоту —
+// (w) Живые ручки стейта: anchors меняются прямо в композиции - покоящийся лист доезжает к новому якорю сам,
+// без жеста. Кнопка «средний якорь» правит кастомный rest-стоп: свайпни лист на него, затем меняй высоту -
 // лист переедет между 50% и 33%. Шапка показывает текущий стейт и долю среднего якоря.
 @Composable
 private fun CaseLiveHandles(onClose: () -> Unit) {
@@ -696,9 +708,9 @@ private fun CaseLiveHandles(onClose: () -> Unit) {
             )
             PresetBodyText(
                 if (isOnMidAnchor) {
-                    "Лист стоит НА среднем якоре → кнопка «средний якорь» подвинет лист."
+                    "Лист стоит НА среднем якоре -> кнопка «средний якорь» подвинет лист."
                 } else {
-                    "Лист стоит НЕ на среднем якоре → кнопка «средний якорь» поменяет только число. " +
+                    "Лист стоит НЕ на среднем якоре -> кнопка «средний якорь» поменяет только число. " +
                         "Протяни лист медленно вниз, чтобы он осел на средний якорь."
                 },
             )
@@ -714,7 +726,7 @@ private fun CaseLiveHandles(onClose: () -> Unit) {
                         state.anchors(Fraction(if (isLowMid) MID_LOW_FRACTION else MID_DEFAULT_FRACTION))
                     },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text(text = if (isLowMid) "средний якорь → 50%" else "средний якорь → 33%") }
+                ) { Text(text = if (isLowMid) "средний якорь -> 50%" else "средний якорь -> 33%") }
             }
         },
     ) {
@@ -726,20 +738,20 @@ private fun formatFractionPercent(fraction: Float): String =
     "${(fraction * PERCENT_IN_FRACTION).roundToInt()}% экрана"
 
 private fun describeSheetValue(value: SheetValue): String = when (value) {
-    SheetValue.Hidden -> "Hidden — закрыт"
-    SheetValue.Content -> "Content — высота по контенту"
-    SheetValue.Collapsed -> "Collapsed — стоит на 60%-якоре"
-    SheetValue.ExpandedContent -> "ExpandedContent — раскрыт по контенту"
-    SheetValue.ExpandedFullScreen -> "ExpandedFullScreen — во весь экран"
-    SheetValue.Loading -> "Loading — якорь лоадера"
-    is SheetValue.Custom -> "Custom(${value.anchor}) — стоит на среднем якоре"
+    SheetValue.Hidden -> "Hidden - закрыт"
+    SheetValue.Content -> "Content - высота по контенту"
+    SheetValue.Collapsed -> "Collapsed - стоит на 60%-якоре"
+    SheetValue.ExpandedContent -> "ExpandedContent - раскрыт по контенту"
+    SheetValue.ExpandedFullScreen -> "ExpandedFullScreen - во весь экран"
+    SheetValue.Loading -> "Loading - якорь лоадера"
+    is SheetValue.Custom -> "Custom(${value.anchor}) - стоит на среднем якоре"
 }
 
 // Внешний контент слота Additional Top: кросс-фейд текстов (alpha 0 в Collapsed), чтобы гасли синхронно с
 // усадкой высоты, а не обрезались резко.
 @Composable
 private fun AdditionalTopCard(isCollapsed: Boolean) {
-    // alpha через Animatable: .value читается в graphicsLayer (draw-фаза) → кросс-фейд без покадровой рекомпозиции.
+    // alpha через Animatable: .value читается в graphicsLayer (draw-фаза) -> кросс-фейд без покадровой рекомпозиции.
     val contentAlpha = remember { Animatable(if (isCollapsed) 0f else 1f) }
     LaunchedEffect(isCollapsed) {
         contentAlpha.animateTo(if (isCollapsed) 0f else 1f, NativeSheetSpring)
