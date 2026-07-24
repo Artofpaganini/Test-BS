@@ -21,9 +21,7 @@ internal class StayUnderKeyboardMeasurePolicy(
     ): MeasureResult {
         val width = constraints.maxWidth
         val navBarPx = navBarState.value
-        val keyboardHeightPx = keyboardState.value.let { liftState ->
-            if (liftState.isKeyboardVisible) liftState.keyboardHeight.roundToInt() else 0
-        }
+        val keyboardHeightPx = keyboardState.value.keyboardHeight.roundToInt().coerceAtLeast(0)
         val isKeyboardVisible = keyboardHeightPx > 0
         val bottomPlaceable = measurables[1].measure(
             constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity),

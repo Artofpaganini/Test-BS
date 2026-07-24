@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.util.lerp
 import com.onexui.bottomsheet.NativeSheetSpring
 import com.onexui.bottomsheet.additionaltop.AdditionalTopState
 import com.onexui.bottomsheet.anchor.AnchorState
@@ -41,6 +42,12 @@ internal class XBottomSheetState internal constructor(
     private var anchorTable: SheetAnchorTable? = null
 
     private var imePromotedFrom: SheetValue? = null
+
+    private var isImeOffsetDriveActive = false
+
+    private var imeStartAnchorPx = 0f
+
+    private var imeTargetKeyboardPx = 0f
 
     private var dismissScope: CoroutineScope? = null
 
@@ -124,11 +131,14 @@ internal class XBottomSheetState internal constructor(
     suspend fun expand() {
         val measured = metrics ?: return
         imePromotedFrom = null
+        cancelImeOffsetDrive()
         if (currentValue == SheetValue.Collapsed) animateTo(measured.expandTarget())
     }
 
     /** Закрывает лист — анимация высоты к Hidden. */
     suspend fun hide() {
+        imePromotedFrom = null
+        cancelImeOffsetDrive()
         animateTo(SheetValue.Hidden)
     }
 
@@ -145,6 +155,10 @@ internal class XBottomSheetState internal constructor(
         } ?: awaitContentMetrics(loaderMetrics)
         if (!isVisible) return
         val target = measured.openTarget(isSkipCollapsed)
+        if (isImeOffsetDriveActive) {
+            imePromotedFrom = target
+            return
+        }
         if (canPromoteForIme(target, measured)) {
             imePromotedFrom = target
             animateTo(SheetValue.ExpandedFullScreen)
@@ -189,6 +203,11 @@ internal class XBottomSheetState internal constructor(
     internal suspend fun onContentRemeasured() {
         val measured = metrics ?: return
         if (!isVisible || currentValue == SheetValue.Loading) return
+        if (isImeOffsetDriveActive) {
+            imeStartAnchorPx = measured.anchorPx(imePromotedFrom ?: currentValue, isSkipCollapsed).toFloat()
+            imeTargetKeyboardPx = keyboardState?.value?.keyboardHeight ?: imeTargetKeyboardPx
+            return
+        }
         if (isSkipCollapsed && currentValue == SheetValue.Content && measured.isFillMode) {
             animateTo(SheetValue.ExpandedFullScreen)
         } else {
@@ -203,6 +222,11 @@ internal class XBottomSheetState internal constructor(
         val table = rebuilt.toAnchorTable(isSkipCollapsed)
         anchorTable = table
         if (!isVisible || currentValue == SheetValue.Loading || isDragging) return
+        if (isImeOffsetDriveActive) {
+            imeStartAnchorPx = rebuilt.anchorPx(imePromotedFrom ?: currentValue, isSkipCollapsed).toFloat()
+            imeTargetKeyboardPx = keyboardState?.value?.keyboardHeight ?: imeTargetKeyboardPx
+            return
+        }
         val target = resolveRestTargetAfterConfigChange(table)
         if (target != currentValue) currentValue = target
         offset.animateTo(rebuilt.anchorPx(target, isSkipCollapsed).toFloat(), NativeSheetSpring)
@@ -210,22 +234,59 @@ internal class XBottomSheetState internal constructor(
 
     internal suspend fun onImeShown() {
         val measured = metrics ?: return
-        if (!isVisible) return
-        if (canPromoteForIme(currentValue, measured)) {
-            imePromotedFrom = currentValue
+        if (!isVisible || isImeOffsetDriveActive) return
+        if (!canPromoteForIme(currentValue, measured)) return
+        imePromotedFrom = currentValue
+        if (isAlwaysFullScreenOnIme) {
             animateTo(SheetValue.ExpandedFullScreen)
+        } else {
+            imeStartAnchorPx = measured.anchorPx(currentValue, isSkipCollapsed).toFloat()
+            imeTargetKeyboardPx = effectiveKeyboardTargetPx()
+            currentValue = SheetValue.ExpandedFullScreen
+            isImeOffsetDriveActive = true
         }
     }
 
     internal suspend fun onImeHidden() {
+        if (isImeOffsetDriveActive) return
         val target = imePromotedFrom ?: return
         imePromotedFrom = null
         if (currentValue == SheetValue.ExpandedFullScreen) animateTo(target)
     }
 
+    internal suspend fun onImeHeightChanged(lift: KeyboardLiftState) {
+        if (!isImeOffsetDriveActive || isDragging) return
+        val measured = metrics ?: return
+        imeTargetKeyboardPx = maxOf(imeTargetKeyboardPx, lift.targetKeyboardHeightPx, lift.keyboardHeight)
+        val fraction = when {
+            imeTargetKeyboardPx > 0f -> (lift.keyboardHeight / imeTargetKeyboardPx).coerceIn(0f, 1f)
+            else -> 0f
+        }
+        offset.snapTo(lerp(imeStartAnchorPx, measured.maxHeightPx.toFloat(), fraction))
+        if (!lift.isKeyboardVisible && lift.keyboardHeight <= IME_HIDE_EPS_PX) {
+            val restoreTarget = imePromotedFrom
+            cancelImeOffsetDrive()
+            imePromotedFrom = null
+            if (restoreTarget != null) {
+                currentValue = restoreTarget
+                offset.snapTo(measured.anchorPx(restoreTarget, isSkipCollapsed).toFloat())
+            }
+        }
+    }
+
+    private fun cancelImeOffsetDrive() {
+        isImeOffsetDriveActive = false
+        imeTargetKeyboardPx = 0f
+    }
+
+    private fun effectiveKeyboardTargetPx(): Float {
+        val ime = keyboardState?.value ?: return 0f
+        return maxOf(ime.targetKeyboardHeightPx, ime.keyboardHeight)
+    }
+
     internal suspend fun snapToCurrentAnchor() {
         val measured = metrics ?: return
-        if (!isVisible || offset.isRunning) return
+        if (!isVisible || offset.isRunning || isImeOffsetDriveActive) return
         offset.snapTo(measured.anchorPx(currentValue, isSkipCollapsed).toFloat())
     }
 
@@ -258,6 +319,7 @@ internal class XBottomSheetState internal constructor(
     internal fun markDragStarted() {
         if (isDragging) return
         isDragging = true
+        cancelImeOffsetDrive()
     }
 
     internal fun enqueueDrag(deltaHeightPx: Float) {
@@ -314,8 +376,9 @@ internal class XBottomSheetState internal constructor(
         val isPromotable = value == SheetValue.Content || value == SheetValue.Collapsed ||
             value == SheetValue.ExpandedContent || value is SheetValue.Custom
         if (!isPromotable) return false
+        val effectiveKeyboardPx = maxOf(ime.targetKeyboardHeightPx, ime.keyboardHeight).roundToInt()
         return isAlwaysFullScreenOnIme ||
-            measured.anchorPx(value, isSkipCollapsed) + ime.keyboardHeight.roundToInt() > measured.maxHeightPx
+            measured.anchorPx(value, isSkipCollapsed) + effectiveKeyboardPx > measured.maxHeightPx
     }
 
     private suspend fun dragBy(deltaHeightPx: Float) {
@@ -343,6 +406,7 @@ internal class XBottomSheetState internal constructor(
         isDragging = false
         accumulatedOvershootPx = 0f
         imePromotedFrom = null
+        cancelImeOffsetDrive()
         val table = anchorTable ?: return
         val target = table.settleTarget(
             offset.value,
@@ -366,5 +430,6 @@ internal class XBottomSheetState internal constructor(
     private companion object {
         const val REMEASURE_TIMEOUT_MS = 500L
         const val OVERSHOOT_ENTER_EPS_PX = 0.5f
+        const val IME_HIDE_EPS_PX = 0.5f
     }
 }

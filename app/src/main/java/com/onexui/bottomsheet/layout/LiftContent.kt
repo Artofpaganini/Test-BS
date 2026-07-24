@@ -32,11 +32,10 @@ internal fun LiftContent(
         Modifier
     }
     val bottomInsetModifier = Modifier.layout { measurable, constraints ->
-        val ime = keyboardState.value
+        val keyboardHeightPx = keyboardState.value.keyboardHeight.roundToInt()
         val bottomInset = when {
-            isFullScreen && ime.isKeyboardVisible -> ime.keyboardHeight.roundToInt()
-            ime.isKeyboardVisible -> 0
-            else -> navBarPx
+            isFullScreen -> maxOf(keyboardHeightPx, navBarPx)
+            else -> (navBarPx - keyboardHeightPx).coerceAtLeast(0)
         }
         val placeable = measurable.measure(
             constraints.copy(

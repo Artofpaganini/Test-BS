@@ -131,10 +131,7 @@ internal class KeyboardAdjustmentNode(
 
     private fun handleKeyboardChange(isKeyboardVisible: Boolean, keyboardHeight: Float) {
         bottomY?.let { y ->
-            val target = when {
-                isKeyboardVisible -> (keyboardHeight - y - additionalOffsetPx).coerceAtLeast(0f)
-                else -> 0f
-            }
+            val target = (keyboardHeight - y - additionalOffsetPx).coerceAtLeast(0f)
             val useSyncPath = !isLessThan30Api() && shouldChangeSoftInputMode
             when {
                 useSyncPath -> snapToTarget(target)

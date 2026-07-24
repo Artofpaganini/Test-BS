@@ -35,11 +35,15 @@ internal fun ObserveSheetState(
                 .collect { launch { state.onContentRemeasured() } }
         }
         launch {
-            snapshotFlow(manager) { keyboardState.value to state.isLoading }
+            snapshotFlow(manager) { keyboardState.value.isKeyboardVisible to state.isLoading }
                 .distinctUntilChanged()
-                .collect { (lift, _) ->
-                    if (lift.isKeyboardVisible) state.onImeShown() else state.onImeHidden()
+                .collect { (isKeyboardVisible, _) ->
+                    if (isKeyboardVisible) state.onImeShown() else state.onImeHidden()
                 }
+        }
+        launch {
+            snapshotFlow(manager) { keyboardState.value }
+                .collect { lift -> state.onImeHeightChanged(lift) }
         }
         launch {
             snapshotFlow(manager) { state.isVisible }
