@@ -4,7 +4,7 @@ import com.onexui.bottomsheet.handle.DragHandleStyle
 
 @XBottomSheetDsl
 internal class XBottomSheetConfigBuilder {
-    var overlayBackground: Boolean = true
+    var isOverlayBackground: Boolean = true
     var dragHandle: DragHandleStyle? = DragHandleStyle.Theme
 
     internal val additionalTopBuilder = AdditionalTopConfigBuilder()
@@ -29,7 +29,7 @@ internal class XBottomSheetConfigBuilder {
     }
 
     internal fun build(): XBottomSheetConfig = XBottomSheetConfig(
-        overlayBackground = overlayBackground,
+        isOverlayBackground = isOverlayBackground,
         dragHandle = dragHandle,
         additionalTop = additionalTopBuilder.build(),
         dismiss = dismissBuilder.build(),

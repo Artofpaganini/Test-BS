@@ -9,17 +9,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -34,12 +36,12 @@ import com.onexui.bottomsheet.config.resolveHandleTheme
 import com.onexui.bottomsheet.config.resolveScrim
 import com.onexui.bottomsheet.config.resolveSheetBackground
 import com.onexui.bottomsheet.gesture.SheetNestedScrollConnection
+import com.onexui.bottomsheet.layout.SheetBody
 import com.onexui.bottomsheet.layout.SheetContainer
-import com.onexui.bottomsheet.layout.SheetInsets
 import com.onexui.bottomsheet.layout.SheetScrim
+import com.onexui.bottomsheet.layout.rememberSheetDimensions
 import com.onexui.bottomsheet.observe.ObserveSheetState
 import com.onexui.bottomsheet.presets.PresetLoader
-import com.onexui.bottomsheet.state.SheetValue
 import com.onexui.bottomsheet.state.XBottomSheetState
 import kotlin.coroutines.cancellation.CancellationException
 import org.xplatform.uikit.compose.modifier.keyboard.lift.rememberKeyboardLiftState
@@ -58,28 +60,26 @@ internal fun XBottomSheet(
     val density = LocalDensity.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
-    val dismissScope = rememberCoroutineScope()
-    val currentOnDismiss = rememberUpdatedState(onDismissRequest)
-    val sheetScope = remember(state) { XBottomSheetScopeImpl(state, config.loadingSheetHeight) }
     val containerSize = LocalWindowInfo.current.containerSize
-    val screenHeightPx = containerSize.height
-    val screenWidthDp = with(density) { containerSize.width.toDp() }
-    val statusBarPx = WindowInsets.statusBars.getTop(density)
+    val dismissScope = rememberCoroutineScope()
     val navBarPx = WindowInsets.navigationBars.getBottom(density)
-    val loadingSheetHeightPx = with(density) { config.loadingSheetHeight.roundToPx() } + navBarPx
-    val scrimFadeDistancePx = with(density) { config.scrimFadeDistance.toPx() }
-    val scrimColor = config.colors.resolveScrim()
-    val sheetBackgroundColor = config.colors.resolveSheetBackground()
-    val handleThemeColor = config.colors.resolveHandleTheme()
-    val handleStaticColor = config.colors.resolveHandleStatic()
-    val isWide = screenWidthDp >= config.wideScreenThreshold
-    val widthModifier = if (isWide) Modifier.width(config.maxWidth) else Modifier.fillMaxWidth()
+    val statusBarPx = WindowInsets.statusBars.getTop(density)
+    val onDismiss = rememberUpdatedState(onDismissRequest)
     val keyboardState = rememberKeyboardLiftState()
-    val interactionsEnabledState = remember(config.dragHandle) {
+    val sheetScope = remember(state) { XBottomSheetScopeImpl(state, config.loadingSheetHeight) }
+    val dimensions = rememberSheetDimensions(
+        density = density,
+        containerSize = containerSize,
+        statusBarPx = statusBarPx,
+        navBarPx = navBarPx,
+        loadingSheetHeight = config.loadingSheetHeight,
+        scrimFadeDistance = config.scrimFadeDistance,
+        predictiveBackMaxShift = config.predictiveBackMaxShift,
+        wideScreenThreshold = config.wideScreenThreshold,
+    )
+    val isInteractionsEnable = remember(config.dragHandle) {
         derivedStateOf { config.dragHandle != null && !state.isLoading && !keyboardState.value.isKeyboardVisible }
     }
-    val interactionsEnabled by interactionsEnabledState
-    val isFullScreen = state.currentValue == SheetValue.ExpandedFullScreen
     val additionalTopFraction = remember(state) {
         Animatable(if (state.additionalTopState == AdditionalTopState.Expanded) 1f else 0f)
     }
@@ -99,10 +99,11 @@ internal fun XBottomSheet(
         onSheetHidden = { sheetScope.hideKeyboard() },
     )
     val backShift = remember { Animatable(0f) }
-    val predictiveBackMaxShiftPx = with(density) { config.predictiveBackMaxShift.toPx() }
-    PredictiveBackHandler(enabled = state.isVisible && config.dismiss.onBackPress) { progress ->
+    PredictiveBackHandler(enabled = state.isVisible && config.dismiss.isBackPressEnabled) { progress ->
         try {
-            progress.collect { backEvent -> backShift.snapTo(backEvent.progress * predictiveBackMaxShiftPx) }
+            progress.collect { backEvent ->
+                backShift.snapTo(backEvent.progress * dimensions.predictiveBackMaxShiftPx)
+            }
             state.requestDismiss()
             backShift.snapTo(0f)
         } catch (exception: CancellationException) {
@@ -110,14 +111,14 @@ internal fun XBottomSheet(
             throw exception
         }
     }
-    LaunchedEffect(state, screenHeightPx, statusBarPx) { state.snapToCurrentAnchor() }
+    LaunchedEffect(state,  containerSize.height, statusBarPx) { state.snapToCurrentAnchor() }
 
     SideEffect {
-        state.updateDismissOnSwipeDown(config.dismiss.onSwipeDown)
+        state.updateDismissOnSwipeDown(config.dismiss.isSwipeDownEnabled)
         state.updateFlingVelocityThreshold(config.flingVelocityThresholdPxPerSec)
         state.updateResistanceMax(config.resistanceMaxPx)
         state.updateDismissScope(dismissScope)
-        state.updateDismissRequest(currentOnDismiss)
+        state.updateDismissRequest(onDismiss)
         state.updateKeyboardState(keyboardState)
         state.updateAlwaysFullScreenOnIme(
             config.keyboard.bottomBehavior == BottomKeyboardBehavior.StayUnderKeyboard && bottom != null,
@@ -128,46 +129,76 @@ internal fun XBottomSheet(
     LaunchedEffect(state) { state.processGestures() }
 
     val nestedScrollConnection = remember(state) {
-        SheetNestedScrollConnection(state = state, enabledState = interactionsEnabledState)
+        SheetNestedScrollConnection(state = state, isEnabledState = isInteractionsEnable)
     }
-    Box(modifier = Modifier.fillMaxSize().then(modifier)) {
+    val sheetBody: @Composable (Boolean) -> Unit = { isFillHeight ->
+        SheetBody(
+            dragHandle = config.dragHandle,
+            shape = config.shape,
+            sheetBackgroundColor = config.colors.resolveSheetBackground(),
+            handleThemeColor = config.colors.resolveHandleTheme(),
+            handleStaticColor = config.colors.resolveHandleStatic(),
+            dragHandleTopPadding = config.dragHandleTopPadding,
+            dragHandleSize = config.dragHandleSize,
+            keyboardState = keyboardState,
+            isFullScreen = state.isFullScreen,
+            bottomKeyboardBehavior = config.keyboard.bottomBehavior,
+            navBarPx = navBarPx,
+            isFillHeight = isFillHeight,
+            top = top?.let { slot -> { sheetScope.slot() } },
+            bottom = bottom?.let { slot -> { sheetScope.slot() } },
+            middle = { if (state.isLoading) sheetScope.PresetLoader() else sheetScope.middle() },
+        )
+    }
+    val widthModifier = remember(dimensions.isWideScreen, config.maxWidth) {
+        if (dimensions.isWideScreen) Modifier.width(config.maxWidth) else Modifier.fillMaxWidth()
+    }
+    val detectBody: @Composable () -> Unit = { sheetBody(false) }
+    val placeBody: @Composable () -> Unit = { sheetBody(true) }
+    val additionalTopBody: (@Composable () -> Unit)? = additionalTop?.let { card ->
+        {
+            Box(
+                modifier = Modifier.clip(
+                    RoundedCornerShape(
+                        topStart = config.additionalTop.cornerRadius,
+                        topEnd = config.additionalTop.cornerRadius,
+                    ),
+                ),
+            ) {
+                Box(modifier = Modifier.wrapContentHeight(align = Alignment.Top, unbounded = true)) {
+                    sheetScope.card()
+                }
+            }
+        }
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .then(modifier)
+    ) {
         SheetScrim(
             state = state,
-            overlayBackground = config.overlayBackground,
-            scrimColor = scrimColor,
-            dismissOnOutsideTap = config.dismiss.onOutsideTap,
-            scrimFadeDistancePx = scrimFadeDistancePx,
+            isOverlayBackground = config.isOverlayBackground,
+            scrimColor = config.colors.resolveScrim(),
+            isDismissOnOutsideTap = config.dismiss.isOutsideTapEnabled,
+            scrimFadeDistancePx = dimensions.scrimFadeDistancePx,
             onDismissRequest = { state.requestDismiss() },
         )
 
         SheetContainer(
             state = state,
-            insets = SheetInsets(
-                screenHeightPx = screenHeightPx,
-                statusBarPx = statusBarPx,
-                navBarPx = navBarPx,
-                loadingSheetHeightPx = loadingSheetHeightPx,
-            ),
-            overlayBackground = config.overlayBackground,
-            dragHandle = config.dragHandle,
+            insets = dimensions.insets,
+            isOverlayBackground = config.isOverlayBackground,
             shape = config.shape,
-            sheetBackgroundColor = sheetBackgroundColor,
-            handleThemeColor = handleThemeColor,
-            handleStaticColor = handleStaticColor,
-            dragHandleTopPadding = config.dragHandleTopPadding,
-            dragHandleSize = config.dragHandleSize,
-            interactionsEnabled = interactionsEnabled,
-            nestedScrollConnection = nestedScrollConnection,
             keyboardState = keyboardState,
-            isFullScreen = isFullScreen,
-            bottomKeyboardBehavior = config.keyboard.bottomBehavior,
+            isFullScreen = state.isFullScreen,
+            isInteractionsEnabled = isInteractionsEnable.value,
+            nestedScrollConnection = nestedScrollConnection,
             additionalTopFraction = additionalTopFraction,
-            additionalTopConfig = config.additionalTop,
             additionalTopOverlap = config.additionalTopOverlap,
-            additionalTop = additionalTop?.let { slot -> @Composable { sheetScope.slot() } },
-            top = top?.let { slot -> @Composable { sheetScope.slot() } },
-            bottom = bottom?.let { slot -> @Composable { sheetScope.slot() } },
-            middle = { if (state.isLoading) sheetScope.PresetLoader() else sheetScope.middle() },
+            detectBody = detectBody,
+            placeBody = placeBody,
+            additionalTopBody = additionalTopBody,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .then(widthModifier)

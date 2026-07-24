@@ -1,8 +1,8 @@
 package com.onexui.bottomsheet.state
 
-internal fun SheetMetrics.openTarget(skipCollapsed: Boolean): SheetValue = when {
-    isFillMode -> if (skipCollapsed) SheetValue.ExpandedFullScreen else SheetValue.Collapsed
-    skipCollapsed -> SheetValue.Content
+internal fun SheetMetrics.openTarget(isSkipCollapsed: Boolean): SheetValue = when {
+    isFillMode -> if (isSkipCollapsed) SheetValue.ExpandedFullScreen else SheetValue.Collapsed
+    isSkipCollapsed -> SheetValue.Content
     contentHeightPx <= peekPx -> SheetValue.Content
     else -> SheetValue.Collapsed
 }
@@ -13,11 +13,11 @@ internal fun SheetMetrics.expandTarget(): SheetValue = when {
     else -> SheetValue.ExpandedFullScreen
 }
 
-internal fun SheetMetrics.anchorPx(value: SheetValue, skipCollapsed: Boolean): Int = when (value) {
+internal fun SheetMetrics.anchorPx(value: SheetValue, isSkipCollapsed: Boolean): Int = when (value) {
     SheetValue.Hidden -> 0
     SheetValue.Loading -> loadingSheetHeightPx
     SheetValue.Content ->
-        if (skipCollapsed) minOf(contentHeightPx, maxHeightPx) else minOf(contentHeightPx, peekPx)
+        if (isSkipCollapsed) minOf(contentHeightPx, maxHeightPx) else minOf(contentHeightPx, peekPx)
     SheetValue.Collapsed -> peekPx
     SheetValue.ExpandedContent -> minOf(contentHeightPx, maxHeightPx)
     SheetValue.ExpandedFullScreen -> maxHeightPx

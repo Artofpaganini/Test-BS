@@ -4,8 +4,8 @@ import com.onexui.bottomsheet.config.XBottomSheetDsl
 
 @XBottomSheetDsl
 internal class XBottomSheetStateBuilder {
-    var skipCollapsed: Boolean = false
-    var initialLoading: Boolean = false
+    var isSkipCollapsed: Boolean = false
+    var isInitialLoading: Boolean = false
     var peekFraction: Float = 2f / 3f
 
     internal val anchorsBuilder = XSheetAnchorsBuilder()
@@ -15,8 +15,8 @@ internal class XBottomSheetStateBuilder {
     }
 
     internal fun buildState(): XBottomSheetState = XBottomSheetState(
-        skipCollapsed = skipCollapsed,
-        initialLoading = initialLoading,
+        isSkipCollapsed = isSkipCollapsed,
+        isInitialLoading = isInitialLoading,
         peekFraction = peekFraction,
         anchors = anchorsBuilder.build(),
     )

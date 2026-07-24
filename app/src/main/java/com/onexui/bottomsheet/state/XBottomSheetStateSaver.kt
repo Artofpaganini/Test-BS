@@ -9,12 +9,12 @@ internal fun xBottomSheetStateSaver(builder: XBottomSheetStateBuilder): Saver<XB
     },
     restore = { saved ->
         val tag = saved.getOrNull(0) as? String ?: "h"
-        val loading = saved.getOrNull(1) as? Boolean ?: false
+        val isLoadingSaved = saved.getOrNull(1) as? Boolean ?: false
         val topName = saved.getOrNull(2) as? String
         builder.buildState().apply {
             restore(
                 value = sheetValueFromTag(tag),
-                isLoadingSaved = loading,
+                isLoadingSaved = isLoadingSaved,
                 additionalTop = additionalTopFromName(topName),
             )
         }

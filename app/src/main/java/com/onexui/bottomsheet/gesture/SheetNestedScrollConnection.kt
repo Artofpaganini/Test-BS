@@ -12,13 +12,13 @@ import com.onexui.bottomsheet.state.expandTarget
 
 internal class SheetNestedScrollConnection(
     private val state: XBottomSheetState,
-    private val enabledState: State<Boolean>,
+    private val isEnabledState: State<Boolean>,
 ) : NestedScrollConnection {
     override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-        if (!enabledState.value || source != NestedScrollSource.UserInput) return Offset.Zero
+        if (!isEnabledState.value || source != NestedScrollSource.UserInput) return Offset.Zero
         val delta = available.y
         val metrics = state.metrics ?: return Offset.Zero
-        val expandAnchor = metrics.anchorPx(metrics.expandTarget(), state.skipCollapsed)
+        val expandAnchor = metrics.anchorPx(metrics.expandTarget(), state.isSkipCollapsed)
         return if (delta < 0f && state.currentValue == SheetValue.Collapsed &&
             state.offset.value < expandAnchor
         ) {
@@ -34,7 +34,7 @@ internal class SheetNestedScrollConnection(
         available: Offset,
         source: NestedScrollSource,
     ): Offset {
-        if (!enabledState.value || source != NestedScrollSource.UserInput) return Offset.Zero
+        if (!isEnabledState.value || source != NestedScrollSource.UserInput) return Offset.Zero
         val delta = available.y
         return if (delta > 0f) {
             state.enqueueDrag(-delta)

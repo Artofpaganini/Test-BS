@@ -2,11 +2,11 @@ package com.onexui.bottomsheet.config
 
 @XBottomSheetDsl
 internal class DismissConfigBuilder {
-    var onOutsideTap: Boolean = true
-    var onSwipeDown: Boolean = true
+    var isOutsideTapEnabled: Boolean = true
+    var isSwipeDownEnabled: Boolean = true
 
-    var onBackPress: Boolean = false
+    var isBackPressEnabled: Boolean = false
 
     internal fun build(): DismissConfig =
-        DismissConfig(onOutsideTap = onOutsideTap, onSwipeDown = onSwipeDown, onBackPress = onBackPress)
+        DismissConfig(isOutsideTapEnabled = isOutsideTapEnabled, isSwipeDownEnabled = isSwipeDownEnabled, isBackPressEnabled = isBackPressEnabled)
 }

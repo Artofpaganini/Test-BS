@@ -13,22 +13,22 @@ import com.onexui.bottomsheet.state.XBottomSheetState
 @Composable
 internal fun BoxScope.SheetScrim(
     state: XBottomSheetState,
-    overlayBackground: Boolean,
+    isOverlayBackground: Boolean,
     scrimColor: Color,
-    dismissOnOutsideTap: Boolean,
+    isDismissOnOutsideTap: Boolean,
     scrimFadeDistancePx: Float,
     onDismissRequest: () -> Unit,
 ) {
     Box(
         modifier = Modifier
             .matchParentSize()
-            .pointerInput(dismissOnOutsideTap, state) {
+            .pointerInput(isDismissOnOutsideTap, state) {
                 detectTapGestures {
-                    if (dismissOnOutsideTap && !state.isDragging) onDismissRequest()
+                    if (isDismissOnOutsideTap && !state.isDragging) onDismissRequest()
                 }
             }
             .drawBehind {
-                if (overlayBackground) {
+                if (isOverlayBackground) {
                     val fade = (state.offset.value / scrimFadeDistancePx).coerceIn(0f, 1f)
                     drawRect(color = scrimColor, alpha = fade)
                 }

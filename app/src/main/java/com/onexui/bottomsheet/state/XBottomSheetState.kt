@@ -25,8 +25,8 @@ import kotlin.time.Duration.Companion.milliseconds
 
 @Stable
 internal class XBottomSheetState internal constructor(
-    skipCollapsed: Boolean,
-    val initialLoading: Boolean,
+    isSkipCollapsed: Boolean,
+    val isInitialLoading: Boolean,
     peekFraction: Float,
     anchors: List<XSheetAnchor>,
 ) {
@@ -42,19 +42,6 @@ internal class XBottomSheetState internal constructor(
 
     private val gestureCommands = Channel<GestureCommand>(Channel.UNLIMITED)
 
-    var skipCollapsed: Boolean by mutableStateOf(skipCollapsed)
-    var peekFraction: Float by mutableStateOf(peekFraction)
-    var anchors: List<XSheetAnchor> by mutableStateOf(anchors)
-        private set
-
-    var currentValue: SheetValue by mutableStateOf(SheetValue.Hidden)
-        private set
-
-    var isLoading by mutableStateOf(initialLoading)
-        private set
-
-    var additionalTopState by mutableStateOf(AdditionalTopState.Expanded)
-
     internal var metrics by mutableStateOf<SheetMetrics?>(null)
         private set
 
@@ -66,10 +53,10 @@ internal class XBottomSheetState internal constructor(
     internal var keyboardState: State<KeyboardLiftState>? = null
         private set
 
-    internal var alwaysFullScreenOnIme: Boolean = false
+    internal var isAlwaysFullScreenOnIme: Boolean = false
         private set
 
-    internal var dismissOnSwipeDown: Boolean = true
+    internal var isDismissOnSwipeDown: Boolean = true
         private set
 
     internal var flingVelocityThresholdPxPerSec: Float = 0f
@@ -78,7 +65,22 @@ internal class XBottomSheetState internal constructor(
     internal var resistanceMaxPx: Float = 0f
         private set
 
+    var isSkipCollapsed: Boolean by mutableStateOf(isSkipCollapsed)
+    var peekFraction: Float by mutableStateOf(peekFraction)
+    var anchors: List<XSheetAnchor> by mutableStateOf(anchors)
+        private set
+
+    var currentValue: SheetValue by mutableStateOf(SheetValue.Hidden)
+        private set
+
+    var isLoading by mutableStateOf(isInitialLoading)
+        private set
+
+    var additionalTopState by mutableStateOf(AdditionalTopState.Expanded)
+
     val isVisible: Boolean get() = currentValue != SheetValue.Hidden
+
+    val isFullScreen: Boolean get() = currentValue == SheetValue.ExpandedFullScreen
 
     val isAnimating: Boolean get() = offset.isRunning
 
@@ -91,7 +93,7 @@ internal class XBottomSheetState internal constructor(
     suspend fun show() {
         if (isVisible) return
         val measured = awaitMetrics()
-        animateTo(if (isLoading) SheetValue.Loading else measured.openTarget(skipCollapsed))
+        animateTo(if (isLoading) SheetValue.Loading else measured.openTarget(isSkipCollapsed))
     }
 
     /** Раскрывает лист из Collapsed в expandTarget; ручной разворот при скрытии IME не откатывается. */
@@ -118,8 +120,8 @@ internal class XBottomSheetState internal constructor(
             awaitContentMetrics(loaderMetrics)
         } ?: awaitContentMetrics(loaderMetrics)
         if (!isVisible) return
-        val target = measured.openTarget(skipCollapsed)
-        if (shouldPromoteForIme(target, measured)) {
+        val target = measured.openTarget(isSkipCollapsed)
+        if (canPromoteForIme(target, measured)) {
             imePromotedFrom = target
             animateTo(SheetValue.ExpandedFullScreen)
         } else {
@@ -134,9 +136,9 @@ internal class XBottomSheetState internal constructor(
         additionalTopState = additionalTop
     }
 
-    internal fun updateDismissOnSwipeDown(dismissOnSwipeDown: Boolean) {
-        if (this.dismissOnSwipeDown == dismissOnSwipeDown) return
-        this.dismissOnSwipeDown = dismissOnSwipeDown
+    internal fun updateDismissOnSwipeDown(isDismissOnSwipeDown: Boolean) {
+        if (this.isDismissOnSwipeDown == isDismissOnSwipeDown) return
+        this.isDismissOnSwipeDown = isDismissOnSwipeDown
     }
 
     internal fun updateFlingVelocityThreshold(flingVelocityThresholdPxPerSec: Float) {
@@ -149,9 +151,9 @@ internal class XBottomSheetState internal constructor(
         this.resistanceMaxPx = resistanceMaxPx
     }
 
-    internal fun updateAlwaysFullScreenOnIme(alwaysFullScreenOnIme: Boolean) {
-        if (this.alwaysFullScreenOnIme == alwaysFullScreenOnIme) return
-        this.alwaysFullScreenOnIme = alwaysFullScreenOnIme
+    internal fun updateAlwaysFullScreenOnIme(isAlwaysFullScreenOnIme: Boolean) {
+        if (this.isAlwaysFullScreenOnIme == isAlwaysFullScreenOnIme) return
+        this.isAlwaysFullScreenOnIme = isAlwaysFullScreenOnIme
     }
 
     internal fun updateKeyboardState(keyboardState: State<KeyboardLiftState>) {
@@ -178,10 +180,10 @@ internal class XBottomSheetState internal constructor(
     internal suspend fun onContentRemeasured() {
         val measured = metrics ?: return
         if (!isVisible || currentValue == SheetValue.Loading) return
-        if (skipCollapsed && currentValue == SheetValue.Content && measured.isFillMode) {
+        if (isSkipCollapsed && currentValue == SheetValue.Content && measured.isFillMode) {
             animateTo(SheetValue.ExpandedFullScreen)
         } else {
-            offset.animateTo(measured.anchorPx(currentValue, skipCollapsed).toFloat(), NativeSheetSpring)
+            offset.animateTo(measured.anchorPx(currentValue, isSkipCollapsed).toFloat(), NativeSheetSpring)
         }
     }
 
@@ -189,18 +191,18 @@ internal class XBottomSheetState internal constructor(
         val current = metrics ?: return
         val rebuilt = current.copy(peekFraction = peekFraction, customAnchors = anchors)
         metrics = rebuilt
-        val table = rebuilt.toAnchorTable(skipCollapsed)
+        val table = rebuilt.toAnchorTable(isSkipCollapsed)
         anchorTable = table
         if (!isVisible || currentValue == SheetValue.Loading || isDragging) return
         val target = resolveRestTargetAfterConfigChange(table)
         if (target != currentValue) currentValue = target
-        offset.animateTo(rebuilt.anchorPx(target, skipCollapsed).toFloat(), NativeSheetSpring)
+        offset.animateTo(rebuilt.anchorPx(target, isSkipCollapsed).toFloat(), NativeSheetSpring)
     }
 
     internal suspend fun onImeShown() {
         val measured = metrics ?: return
         if (!isVisible) return
-        if (shouldPromoteForIme(currentValue, measured)) {
+        if (canPromoteForIme(currentValue, measured)) {
             imePromotedFrom = currentValue
             animateTo(SheetValue.ExpandedFullScreen)
         }
@@ -215,7 +217,7 @@ internal class XBottomSheetState internal constructor(
     internal suspend fun snapToCurrentAnchor() {
         val measured = metrics ?: return
         if (!isVisible || offset.isRunning) return
-        offset.snapTo(measured.anchorPx(currentValue, skipCollapsed).toFloat())
+        offset.snapTo(measured.anchorPx(currentValue, isSkipCollapsed).toFloat())
     }
 
     internal fun updateMetrics(
@@ -242,7 +244,7 @@ internal class XBottomSheetState internal constructor(
             customAnchors = anchors,
         )
         metrics = updated
-        anchorTable = updated.toAnchorTable(skipCollapsed)
+        anchorTable = updated.toAnchorTable(isSkipCollapsed)
     }
 
     internal fun markDragStarted() {
@@ -293,28 +295,28 @@ internal class XBottomSheetState internal constructor(
         return value
     }
 
-    private fun shouldPromoteForIme(value: SheetValue, measured: SheetMetrics): Boolean {
+    private fun canPromoteForIme(value: SheetValue, measured: SheetMetrics): Boolean {
         val ime = keyboardState?.value ?: return false
         if (!ime.isKeyboardVisible) return false
         if (value == SheetValue.Loading) return true
-        val promotable = value == SheetValue.Content || value == SheetValue.Collapsed ||
+        val isPromotable = value == SheetValue.Content || value == SheetValue.Collapsed ||
             value == SheetValue.ExpandedContent || value is SheetValue.Custom
-        if (!promotable) return false
-        return alwaysFullScreenOnIme ||
-            measured.anchorPx(value, skipCollapsed) + ime.keyboardHeight.roundToInt() > measured.maxHeightPx
+        if (!isPromotable) return false
+        return isAlwaysFullScreenOnIme ||
+            measured.anchorPx(value, isSkipCollapsed) + ime.keyboardHeight.roundToInt() > measured.maxHeightPx
     }
 
     private suspend fun dragBy(deltaHeightPx: Float) {
         val measured = metrics ?: return
         val table = anchorTable ?: return
-        val floorPx = if (dismissOnSwipeDown) 0f else table.lowestRestAnchorPx.toFloat()
-        val atTop = currentValue == SheetValue.ExpandedFullScreen
-        val overshootBase = if (atTop) measured.maxHeightPx.toFloat() else table.highestRestAnchorPx.toFloat()
+        val floorPx = if (isDismissOnSwipeDown) 0f else table.lowestRestAnchorPx.toFloat()
+        val isAtTop = currentValue == SheetValue.ExpandedFullScreen
+        val overshootBase = if (isAtTop) measured.maxHeightPx.toFloat() else table.highestRestAnchorPx.toFloat()
         val overshootCeiling =
-            if (atTop) (measured.maxHeightPx + resistanceMaxPx) else measured.maxHeightPx.toFloat()
-        val inOvershoot = accumulatedOvershootPx > 0f ||
+            if (isAtTop) (measured.maxHeightPx + resistanceMaxPx) else measured.maxHeightPx.toFloat()
+        val isInOvershoot = accumulatedOvershootPx > 0f ||
             (offset.value >= overshootBase - OVERSHOOT_ENTER_EPS_PX && deltaHeightPx > 0f)
-        if (inOvershoot) {
+        if (isInOvershoot) {
             accumulatedOvershootPx = (accumulatedOvershootPx + deltaHeightPx).coerceAtLeast(0f)
             val resisted = resistedOvershoot(accumulatedOvershootPx, resistanceMaxPx)
             offset.snapTo((overshootBase + resisted).coerceAtMost(overshootCeiling))
@@ -329,7 +331,7 @@ internal class XBottomSheetState internal constructor(
         accumulatedOvershootPx = 0f
         imePromotedFrom = null
         val table = anchorTable ?: return
-        val target = table.settleTarget(offset.value, velocity, dismissOnSwipeDown, flingVelocityThresholdPxPerSec)
+        val target = table.settleTarget(offset.value, velocity, isDismissOnSwipeDown, flingVelocityThresholdPxPerSec)
         when {
             target == null -> animateTo(currentValue)
             target == SheetValue.Hidden -> requestDismiss()
@@ -339,7 +341,7 @@ internal class XBottomSheetState internal constructor(
 
     private suspend fun animateTo(target: SheetValue) {
         currentValue = target
-        val anchor = metrics?.anchorPx(target, skipCollapsed)?.toFloat() ?: 0f
+        val anchor = metrics?.anchorPx(target, isSkipCollapsed)?.toFloat() ?: 0f
         offset.animateTo(anchor, NativeSheetSpring)
     }
 

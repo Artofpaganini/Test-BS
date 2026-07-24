@@ -32,20 +32,20 @@ internal fun SheetBody(
     isFullScreen: Boolean,
     bottomKeyboardBehavior: BottomKeyboardBehavior,
     navBarPx: Int,
-    fillHeight: Boolean,
+    isFillHeight: Boolean,
     top: (@Composable () -> Unit)?,
     bottom: (@Composable () -> Unit)?,
     middle: @Composable () -> Unit,
 ) {
     val isBottomUnderKeyboardMode = bottomKeyboardBehavior == BottomKeyboardBehavior.StayUnderKeyboard && bottom != null
-    val sizeModifier = if (fillHeight) Modifier.fillMaxSize() else Modifier.fillMaxWidth()
+    val sizeModifier = if (isFillHeight) Modifier.fillMaxSize() else Modifier.fillMaxWidth()
     val sheetSurface: @Composable () -> Unit = {
         SheetSurface(modifier = sizeModifier, shape = shape, backgroundColor = sheetBackgroundColor) {
             if (isBottomUnderKeyboardMode) {
                 Column(modifier = sizeModifier) {
                     top?.invoke()
                     StayUnderKeyboardContent(
-                        modifier = (if (fillHeight) Modifier.weight(1f) else Modifier.weight(1f, fill = false))
+                        modifier = (if (isFillHeight) Modifier.weight(1f) else Modifier.weight(1f, fill = false))
                             .fillMaxWidth(),
                         keyboardState = keyboardState,
                         navBarPx = navBarPx,
@@ -59,7 +59,7 @@ internal fun SheetBody(
                     keyboardState = keyboardState,
                     isFullScreen = isFullScreen,
                     navBarPx = navBarPx,
-                    fillHeight = fillHeight,
+                    isFillHeight = isFillHeight,
                     top = top,
                     middle = middle,
                     bottom = bottom,

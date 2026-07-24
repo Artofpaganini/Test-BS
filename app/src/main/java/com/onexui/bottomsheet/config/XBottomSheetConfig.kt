@@ -10,7 +10,7 @@ import com.onexui.bottomsheet.handle.DragHandleStyle
 
 @Immutable
 internal class XBottomSheetConfig internal constructor(
-    val overlayBackground: Boolean,
+    val isOverlayBackground: Boolean,
     val dragHandle: DragHandleStyle?,
     val additionalTop: AdditionalTopConfig,
     val dismiss: DismissConfig,

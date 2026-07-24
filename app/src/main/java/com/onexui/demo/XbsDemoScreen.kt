@@ -73,9 +73,9 @@ private enum class DemoCase(val label: String) {
     A("(a) Content — выход из аккаунта"),
     B1("(b1) Expand → ExpandedContent (средний список)"),
     B2("(b2) Expand → ExpandedFullScreen (огромный список)"),
-    C("(c) skipCollapsed = true"),
+    C("(c) isSkipCollapsed = true"),
     D("(d) Loading → markContentReady"),
-    E("(e) overlayBackground = false (тень)"),
+    E("(e) isOverlayBackground = false (тень)"),
     F("(f) dragHandle = null"),
     G("(g) Additional Top — купон / отслеживать"),
     I("(i) IME — поиск: подъём / авто-FullScreen + shrink"),
@@ -91,7 +91,7 @@ private enum class DemoCase(val label: String) {
     R("(r) Кастомный якорь 50% (свайп: peek → 50% → full)"),
     T("(t) AdditionalTop + короткий контент (wrap)"),
     U("(u) Loading + поиск: IME во время Loading"),
-    V("(v) predictive back — onBackPress=true"),
+    V("(v) predictive back — isBackPressEnabled=true"),
     W("(w) live-ручки: peekFraction + anchors"),
 }
 
@@ -365,25 +365,25 @@ private fun CaseHugeList(onClose: () -> Unit) {
     }
 }
 
-// (c) skipCollapsed = true: контент БЕЗ лимита 60% (лимит — Status Bar). Длинный список (>экрана) → открытие
+// (c) isSkipCollapsed = true: контент БЕЗ лимита 60% (лимит — Status Bar). Длинный список (>экрана) → открытие
 // сразу ExpandedFullScreen, минуя Collapsed (без skip был бы Collapsed 60%) — видна ветка skip.
 @Composable
 private fun CaseSkipCollapsed(onClose: () -> Unit) {
-    val state = rememberXBottomSheetState { skipCollapsed = true }
+    val state = rememberXBottomSheetState { isSkipCollapsed = true }
     LaunchedEffect(Unit) { state.show() }
     XBottomSheet(
         state = state,
         onDismissRequest = { state.hide(); onClose() },
-        top = { PresetTitle("Популярное (skipCollapsed)") },
+        top = { PresetTitle("Популярное (isSkipCollapsed)") },
     ) {
         SportLazyList(SPORTS.take(50))
     }
 }
 
-// (d) Loading → markContentReady: initialLoading, show() → Loading 192dp/Loader, задержка → markContentReady() → анимация.
+// (d) Loading → markContentReady: isInitialLoading, show() → Loading 192dp/Loader, задержка → markContentReady() → анимация.
 @Composable
 private fun CaseLoading(onClose: () -> Unit) {
-    val state = rememberXBottomSheetState { initialLoading = true }
+    val state = rememberXBottomSheetState { isInitialLoading = true }
     LaunchedEffect(Unit) {
         state.show()
         delay(LOADING_DELAY_MS)
@@ -398,7 +398,7 @@ private fun CaseLoading(onClose: () -> Unit) {
     }
 }
 
-// (e) overlayBackground = false: видна тень Shadow Soft, тачи под листом всё равно заблокированы.
+// (e) isOverlayBackground = false: видна тень Shadow Soft, тачи под листом всё равно заблокированы.
 @Composable
 private fun CaseNoOverlay(onClose: () -> Unit) {
     val state = rememberXBottomSheetState()
@@ -406,11 +406,11 @@ private fun CaseNoOverlay(onClose: () -> Unit) {
     XBottomSheet(
         state = state,
         onDismissRequest = { state.hide(); onClose() },
-        config = rememberXBottomSheetConfig { overlayBackground = false },
+        config = rememberXBottomSheetConfig { isOverlayBackground = false },
         top = { PresetTitle("Без затемнения") },
         bottom = { PresetSingleButton(text = "Понятно", onClick = { requestDismiss() }) },
     ) {
-        PresetBodyText("overlayBackground = false: фон не затемняется, виден Shadow Soft. Тачи под листом заблокированы.")
+        PresetBodyText("isOverlayBackground = false: фон не затемняется, виден Shadow Soft. Тачи под листом заблокированы.")
     }
 }
 
@@ -436,18 +436,18 @@ private fun CaseNoHandle(onClose: () -> Unit) {
 private fun CaseAdditionalTop(onClose: () -> Unit) {
     val state = rememberXBottomSheetState()
     LaunchedEffect(Unit) { state.show() }
-    val collapsed = state.additionalTopState == AdditionalTopState.Collapsed
+    val isCollapsed = state.additionalTopState == AdditionalTopState.Collapsed
     XBottomSheet(
         state = state,
         onDismissRequest = { state.hide(); onClose() },
         config = rememberXBottomSheetConfig { additionalTop { cornerRadius = 16.dp } },
-        additionalTop = { AdditionalTopCard(collapsed = collapsed) },
+        additionalTop = { AdditionalTopCard(isCollapsed = isCollapsed) },
         top = { PresetTitle("Событие") },
         bottom = {
             PresetSingleButton(
-                text = if (collapsed) "Развернуть Additional Top" else "Свернуть Additional Top",
+                text = if (isCollapsed) "Развернуть Additional Top" else "Свернуть Additional Top",
                 onClick = {
-                    state.additionalTopState = if (collapsed) {
+                    state.additionalTopState = if (isCollapsed) {
                         AdditionalTopState.Expanded
                     } else {
                         AdditionalTopState.Collapsed
@@ -529,7 +529,7 @@ private fun CaseImeBottomAboveKeyboard(onClose: () -> Unit) {
     }
 }
 
-// (j) Все способы закрытия опциональны: dismissOnOutsideTap=false, dismissOnSwipeDown=false — закрыть можно
+// (j) Все способы закрытия опциональны: isDismissOnOutsideTap=false, isDismissOnSwipeDown=false — закрыть можно
 // ТОЛЬКО кнопкой (requestDismiss).
 @Composable
 private fun CaseNoDismiss(onClose: () -> Unit) {
@@ -538,20 +538,20 @@ private fun CaseNoDismiss(onClose: () -> Unit) {
     XBottomSheet(
         state = state,
         onDismissRequest = { state.hide(); onClose() },
-        config = rememberXBottomSheetConfig { dismiss { onOutsideTap = false; onSwipeDown = false } },
+        config = rememberXBottomSheetConfig { dismiss { isOutsideTapEnabled = false; isSwipeDownEnabled = false } },
         top = { PresetTitle("Закрытия выключены") },
         bottom = { PresetSingleButton(text = "Закрыть", onClick = { requestDismiss() }) },
     ) {
-        PresetBodyText("dismissOnOutsideTap = false, dismissOnSwipeDown = false. Тап вне листа и свайп вниз не закрывают — только кнопка.")
+        PresetBodyText("isDismissOnOutsideTap = false, isDismissOnSwipeDown = false. Тап вне листа и свайп вниз не закрывают — только кнопка.")
     }
 }
 
 // (k) DragHandle.Static + рост контента: кнопка в Middle добавляет элементы → onContentRemeasured тянет высоту
-// за контентом; при skipCollapsed=true и росте выше экрана срабатывает ветка «контент вырос выше экрана» →
+// за контентом; при isSkipCollapsed=true и росте выше экрана срабатывает ветка «контент вырос выше экрана» →
 // авто-переход в ExpandedFullScreen.
 @Composable
 private fun CaseStaticGrow(onClose: () -> Unit) {
-    val state = rememberXBottomSheetState { skipCollapsed = true }
+    val state = rememberXBottomSheetState { isSkipCollapsed = true }
     var itemCount by remember { mutableStateOf(4) }
     LaunchedEffect(Unit) { state.show() }
     XBottomSheet(
@@ -588,7 +588,7 @@ private fun CaseAdditionalTopWrap(onClose: () -> Unit) {
         state = state,
         onDismissRequest = { state.hide(); onClose() },
         config = rememberXBottomSheetConfig { additionalTop { cornerRadius = 16.dp } },
-        additionalTop = { AdditionalTopCard(collapsed = additionalTopState == AdditionalTopState.Collapsed) },
+        additionalTop = { AdditionalTopCard(isCollapsed = additionalTopState == AdditionalTopState.Collapsed) },
         top = { PresetTitle("Событие (короткий)") },
         bottom = {
             PresetSingleButton(
@@ -611,7 +611,7 @@ private fun CaseAdditionalTopWrap(onClose: () -> Unit) {
 // под открытой клавиатурой → авто-FullScreen (верх листа не уходит за потолок).
 @Composable
 private fun CaseLoadingImeSearch(onClose: () -> Unit) {
-    val state = rememberXBottomSheetState { initialLoading = true }
+    val state = rememberXBottomSheetState { isInitialLoading = true }
     var query by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
         state.show()
@@ -631,7 +631,7 @@ private fun CaseLoadingImeSearch(onClose: () -> Unit) {
     }
 }
 
-// (v) predictive back: dismiss.onBackPress=true → back-жест (Android 14+ gesture nav) визуально двигает лист за
+// (v) predictive back: dismiss.isBackPressEnabled=true → back-жест (Android 14+ gesture nav) визуально двигает лист за
 // прогрессом. Кнопочный back и API<34 закрывают мгновенно как раньше.
 @Composable
 private fun CasePredictiveBack(onClose: () -> Unit) {
@@ -640,10 +640,10 @@ private fun CasePredictiveBack(onClose: () -> Unit) {
     XBottomSheet(
         state = state,
         onDismissRequest = { state.hide(); onClose() },
-        config = rememberXBottomSheetConfig { dismiss { onBackPress = true } },
+        config = rememberXBottomSheetConfig { dismiss { isBackPressEnabled = true } },
         top = { PresetTitle("Predictive back") },
     ) {
-        PresetBodyText("dismiss.onBackPress = true: back-жест (Android 14+) визуально двигает лист за пальцем. Отпустить — лист закрывается; отменить — возвращается на место.")
+        PresetBodyText("dismiss.isBackPressEnabled = true: back-жест (Android 14+) визуально двигает лист за пальцем. Отпустить — лист закрывается; отменить — возвращается на место.")
     }
 }
 
@@ -719,11 +719,11 @@ private fun describeSheetValue(value: SheetValue): String = when (value) {
 // Внешний контент слота Additional Top: кросс-фейд текстов (alpha 0 в Collapsed), чтобы гасли синхронно с
 // усадкой высоты, а не обрезались резко.
 @Composable
-private fun AdditionalTopCard(collapsed: Boolean) {
+private fun AdditionalTopCard(isCollapsed: Boolean) {
     // alpha через Animatable: .value читается в graphicsLayer (draw-фаза) → кросс-фейд без покадровой рекомпозиции.
-    val contentAlpha = remember { Animatable(if (collapsed) 0f else 1f) }
-    LaunchedEffect(collapsed) {
-        contentAlpha.animateTo(if (collapsed) 0f else 1f, NativeSheetSpring)
+    val contentAlpha = remember { Animatable(if (isCollapsed) 0f else 1f) }
+    LaunchedEffect(isCollapsed) {
+        contentAlpha.animateTo(if (isCollapsed) 0f else 1f, NativeSheetSpring)
     }
     Column(
         modifier = Modifier

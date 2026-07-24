@@ -18,7 +18,7 @@ internal fun LiftContent(
     keyboardState: State<KeyboardLiftState>,
     isFullScreen: Boolean,
     navBarPx: Int,
-    fillHeight: Boolean,
+    isFillHeight: Boolean,
     top: (@Composable () -> Unit)?,
     middle: @Composable () -> Unit,
     bottom: (@Composable () -> Unit)?,
@@ -51,7 +51,7 @@ internal fun LiftContent(
     Column(modifier = modifier.then(bottomInsetModifier)) {
         top?.invoke()
         Box(
-            modifier = (if (fillHeight) Modifier.weight(1f) else Modifier.weight(1f, fill = false))
+            modifier = (if (isFillHeight) Modifier.weight(1f) else Modifier.weight(1f, fill = false))
                 .fillMaxWidth()
                 .then(middleShrinkModifier),
         ) {

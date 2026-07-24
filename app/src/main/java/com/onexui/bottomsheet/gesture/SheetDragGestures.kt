@@ -10,7 +10,7 @@ import com.onexui.bottomsheet.state.XBottomSheetState
 @Composable
 internal fun Modifier.sheetDrag(
     state: XBottomSheetState,
-    enabled: Boolean,
+    isEnabled: Boolean,
 ): Modifier {
     val draggableState = rememberDraggableState { delta ->
         state.enqueueDrag(-delta)
@@ -18,7 +18,7 @@ internal fun Modifier.sheetDrag(
     return this.draggable(
         state = draggableState,
         orientation = Orientation.Vertical,
-        enabled = enabled,
+        enabled = isEnabled,
         onDragStarted = { state.markDragStarted() },
         onDragStopped = { velocity -> state.enqueueSettle(velocity) },
     )
