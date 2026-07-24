@@ -4,11 +4,11 @@ import com.onexui.bottomsheet.config.XBottomSheetDsl
 
 @XBottomSheetDsl
 internal class XSheetAnchorsBuilder {
-    private val anchors = mutableListOf<XSheetAnchor>()
+    private val anchors = linkedMapOf<String, Float>()
 
     infix fun String.at(heightFraction: Float) {
-        anchors.add(XSheetAnchor(key = this, heightFraction = heightFraction))
+        anchors[this] = heightFraction
     }
 
-    internal fun build(): List<XSheetAnchor> = anchors.toList()
+    internal fun build(): Map<String, Float> = anchors.toMap()
 }

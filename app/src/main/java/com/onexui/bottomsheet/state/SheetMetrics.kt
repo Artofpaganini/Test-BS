@@ -8,7 +8,7 @@ internal data class SheetMetrics(
     val contentHeightPx: Int,
     val loadingSheetHeightPx: Int,
     val peekFraction: Float,
-    val customAnchors: List<XSheetAnchor>,
+    val customAnchors: Map<String, Float>,
 ) {
     val maxHeightPx: Int get() = (screenHeightPx - statusBarPx).coerceAtLeast(0)
 
@@ -17,7 +17,7 @@ internal data class SheetMetrics(
     val isFillMode: Boolean get() = contentHeightPx >= maxHeightPx
 
     fun customAnchorPx(key: String): Int {
-        val fraction = customAnchors.firstOrNull { anchor -> anchor.key == key }?.heightFraction ?: peekFraction
+        val fraction = customAnchors[key] ?: peekFraction
         return (screenHeightPx * fraction).roundToInt().coerceIn(0, maxHeightPx)
     }
 }

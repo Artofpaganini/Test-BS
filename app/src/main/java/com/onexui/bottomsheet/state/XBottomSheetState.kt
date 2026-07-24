@@ -28,7 +28,7 @@ internal class XBottomSheetState internal constructor(
     isSkipCollapsed: Boolean,
     val isInitialLoading: Boolean,
     peekFraction: Float,
-    anchors: List<XSheetAnchor>,
+    anchors: Map<String, Float>,
 ) {
     private var accumulatedOvershootPx = 0f
 
@@ -67,7 +67,7 @@ internal class XBottomSheetState internal constructor(
 
     var isSkipCollapsed: Boolean by mutableStateOf(isSkipCollapsed)
     var peekFraction: Float by mutableStateOf(peekFraction)
-    var anchors: List<XSheetAnchor> by mutableStateOf(anchors)
+    var anchors: Map<String, Float> by mutableStateOf(anchors)
         private set
 
     var currentValue: SheetValue by mutableStateOf(SheetValue.Hidden)
@@ -288,7 +288,7 @@ internal class XBottomSheetState internal constructor(
 
     private fun resolveRestTargetAfterConfigChange(table: SheetAnchorTable): SheetValue {
         val value = currentValue
-        if (value is SheetValue.Custom && anchors.none { anchor -> anchor.key == value.key }) {
+        if (value is SheetValue.Custom && !anchors.containsKey(value.key)) {
             return table.settleTarget(offset.value, 0f, isDismissAllowed = false, flingVelocityThresholdPxPerSec)
                 ?: value
         }
