@@ -97,15 +97,21 @@ internal class XBottomSheetState internal constructor(
 
     /** Меняет набор кастомных rest-якорей той же DSL-грамматикой, что и билдер (`"half" at 0.5f`). */
     fun anchors(configure: XSheetAnchorsBuilder.() -> Unit) {
-        anchors = XSheetAnchorsBuilder().apply(configure).build()
+        val updated = XSheetAnchorsBuilder().apply(configure).build()
+        if (updated == anchors) return
+        anchors = updated
     }
 
     fun behavior(configure: XBottomSheetBehaviorBuilder.() -> Unit) {
-        behavior = XBottomSheetBehaviorBuilder(behavior).apply(configure).build()
+        val updated = XBottomSheetBehaviorBuilder(behavior).apply(configure).build()
+        if (updated == behavior) return
+        behavior = updated
     }
 
     fun style(configure: XBottomSheetStyleBuilder.() -> Unit) {
-        style = XBottomSheetStyleBuilder(style).apply(configure).build()
+        val updated = XBottomSheetStyleBuilder(style).apply(configure).build()
+        if (updated == style) return
+        style = updated
     }
 
     /** Открывает лист: в Loading — к Loader-якорю, иначе к openTarget по замеру. Уже открытый не переоткрывает. */

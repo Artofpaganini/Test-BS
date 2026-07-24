@@ -4,7 +4,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 
 @Immutable
-internal class XBottomSheetColors(
+internal data class XBottomSheetColors(
     val scrim: Color,
     val sheetBackground: Color,
 ) {
