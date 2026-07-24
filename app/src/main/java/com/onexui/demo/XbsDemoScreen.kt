@@ -47,6 +47,7 @@ import com.onexui.bottomsheet.NativeSheetSpring
 import com.onexui.bottomsheet.XBottomSheet
 import com.onexui.bottomsheet.XBottomSheetScope
 import com.onexui.bottomsheet.additionaltop.AdditionalTopState
+import com.onexui.bottomsheet.anchor.AnchorState.Fraction
 import com.onexui.bottomsheet.config.BottomKeyboardBehavior
 import com.onexui.bottomsheet.handle.DragHandleStyle
 import com.onexui.bottomsheet.presets.PresetBodyText
@@ -201,7 +202,7 @@ private fun XbsCaseHost(case: DemoCase, onClose: () -> Unit) {
 // останавливается на ближайшем из якорей: peek(2/3) / 50% / full. Разраб задаёт свои через customAnchors.
 @Composable
 private fun CaseCustomAnchor(onClose: () -> Unit) {
-    val state = rememberXBottomSheetState { structure { anchors { "half" at 0.5f } } }
+    val state = rememberXBottomSheetState { structure { anchors { +Fraction(HALF_ANCHOR_FRACTION) } } }
     LaunchedEffect(Unit) { state.show() }
     XBottomSheet(
         state = state,
@@ -679,7 +680,7 @@ private fun CasePredictiveBack(onClose: () -> Unit) {
 // Шапка показывает текущий стейт и обе доли, чтобы смена невидимого якоря читалась на экране.
 @Composable
 private fun CaseLiveHandles(onClose: () -> Unit) {
-    val state = rememberXBottomSheetState { structure { anchors { "mid" at MID_DEFAULT_FRACTION } } }
+    val state = rememberXBottomSheetState { structure { anchors { +Fraction(MID_DEFAULT_FRACTION) } } }
     var isWidePeek by remember { mutableStateOf(false) }
     var isLowMid by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { state.show() }
@@ -720,7 +721,7 @@ private fun CaseLiveHandles(onClose: () -> Unit) {
                 Button(
                     onClick = {
                         isLowMid = !isLowMid
-                        state.anchors { "mid" at if (isLowMid) MID_LOW_FRACTION else MID_DEFAULT_FRACTION }
+                        state.anchors { +Fraction(if (isLowMid) MID_LOW_FRACTION else MID_DEFAULT_FRACTION) }
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(text = if (isLowMid) "средний якорь → 50%" else "средний якорь → 33%") }
@@ -741,7 +742,7 @@ private fun describeSheetValue(value: SheetValue): String = when (value) {
     SheetValue.ExpandedContent -> "ExpandedContent — раскрыт по контенту"
     SheetValue.ExpandedFullScreen -> "ExpandedFullScreen — во весь экран"
     SheetValue.Loading -> "Loading — якорь лоадера"
-    is SheetValue.Custom -> "Custom(\"${value.key}\") — стоит на среднем якоре"
+    is SheetValue.Custom -> "Custom(${value.anchor}) — стоит на среднем якоре"
 }
 
 // Внешний контент слота Additional Top: кросс-фейд текстов (alpha 0 в Collapsed), чтобы гасли синхронно с
@@ -779,5 +780,6 @@ private const val PEEK_DEFAULT_FRACTION = 2f / 3f
 private const val PEEK_WIDE_FRACTION = 0.5f
 private const val MID_DEFAULT_FRACTION = 0.5f
 private const val MID_LOW_FRACTION = 0.33f
+private const val HALF_ANCHOR_FRACTION = 0.5f
 private const val PERCENT_IN_FRACTION = 100
 private const val GRID_COLUMNS = 2

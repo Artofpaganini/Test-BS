@@ -9,5 +9,5 @@ internal inline fun rememberXBottomSheetState(
     crossinline configure: XBottomSheetStateBuilder.() -> Unit = {},
 ): XBottomSheetState {
     val builder = remember { XBottomSheetStateBuilder().apply(configure) }
-    return rememberSaveable(saver = xBottomSheetStateSaver(builder)) { builder.buildState() }
+    return rememberSaveable(saver = xBottomSheetStateSaver()) { builder.buildState() }
 }

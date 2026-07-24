@@ -6,8 +6,8 @@ internal fun SheetMetrics.toAnchorTable(isSkipCollapsed: Boolean): SheetAnchorTa
         isFillMode -> {
             if (!isSkipCollapsed) entries.add(SheetAnchorTable.AnchorEntry(SheetValue.Collapsed, peekPx))
             entries.add(SheetAnchorTable.AnchorEntry(SheetValue.ExpandedFullScreen, maxHeightPx))
-            customAnchors.keys.forEach { key ->
-                entries.add(SheetAnchorTable.AnchorEntry(SheetValue.Custom(key), customAnchorPx(key)))
+            customAnchors.forEach { anchor ->
+                entries.add(SheetAnchorTable.AnchorEntry(SheetValue.Custom(anchor), customAnchorPx(anchor)))
             }
         }
         isSkipCollapsed ->

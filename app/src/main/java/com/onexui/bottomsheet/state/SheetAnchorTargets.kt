@@ -21,5 +21,5 @@ internal fun SheetMetrics.anchorPx(value: SheetValue, isSkipCollapsed: Boolean):
     SheetValue.Collapsed -> peekPx
     SheetValue.ExpandedContent -> minOf(contentHeightPx, maxHeightPx)
     SheetValue.ExpandedFullScreen -> maxHeightPx
-    is SheetValue.Custom -> customAnchorPx(value.key)
+    is SheetValue.Custom -> customAnchorPx(value.anchor)
 }

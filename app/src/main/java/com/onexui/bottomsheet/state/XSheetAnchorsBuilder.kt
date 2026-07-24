@@ -1,14 +1,15 @@
 package com.onexui.bottomsheet.state
 
+import com.onexui.bottomsheet.anchor.AnchorState
 import com.onexui.bottomsheet.config.XBottomSheetDsl
 
 @XBottomSheetDsl
 internal class XSheetAnchorsBuilder {
-    private val anchors = linkedMapOf<String, Float>()
+    private val anchors = linkedSetOf<AnchorState>()
 
-    infix fun String.at(heightFraction: Float) {
-        anchors[this] = heightFraction
+    operator fun AnchorState.unaryPlus() {
+        anchors.add(this)
     }
 
-    internal fun build(): Map<String, Float> = anchors.toMap()
+    internal fun build(): Set<AnchorState> = anchors.toSet()
 }

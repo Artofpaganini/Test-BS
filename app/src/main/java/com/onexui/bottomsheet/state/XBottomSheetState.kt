@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import com.onexui.bottomsheet.NativeSheetSpring
 import com.onexui.bottomsheet.additionaltop.AdditionalTopState
+import com.onexui.bottomsheet.anchor.AnchorState
 import com.onexui.bottomsheet.behavior.XBottomSheetBehavior
 import com.onexui.bottomsheet.behavior.XBottomSheetBehaviorBuilder
 import com.onexui.bottomsheet.gesture.resistedOvershoot
@@ -32,7 +33,7 @@ internal class XBottomSheetState internal constructor(
     isSkipCollapsed: Boolean,
     val isInitialLoading: Boolean,
     peekFraction: Float,
-    anchors: Map<String, Float>,
+    anchors: Set<AnchorState>,
     behavior: XBottomSheetBehavior,
     style: XBottomSheetStyle,
 ) {
@@ -64,7 +65,7 @@ internal class XBottomSheetState internal constructor(
 
     var isSkipCollapsed: Boolean by mutableStateOf(isSkipCollapsed)
     var peekFraction: Float by mutableStateOf(peekFraction)
-    var anchors: Map<String, Float> by mutableStateOf(anchors)
+    var anchors: Set<AnchorState> by mutableStateOf(anchors)
         private set
 
     var behavior: XBottomSheetBehavior by mutableStateOf(behavior)
@@ -95,7 +96,7 @@ internal class XBottomSheetState internal constructor(
             return (offset.value / maxHeightPx).coerceIn(0f, 1f)
         }
 
-    /** Меняет набор кастомных rest-якорей той же DSL-грамматикой, что и билдер (`"half" at 0.5f`). */
+    /** Меняет набор кастомных rest-якорей той же DSL-грамматикой, что и билдер (`+Fraction(0.5f)`). */
     fun anchors(configure: XSheetAnchorsBuilder.() -> Unit) {
         val updated = XSheetAnchorsBuilder().apply(configure).build()
         if (updated == anchors) return
@@ -298,7 +299,7 @@ internal class XBottomSheetState internal constructor(
 
     private fun resolveRestTargetAfterConfigChange(table: SheetAnchorTable): SheetValue {
         val value = currentValue
-        if (value is SheetValue.Custom && !anchors.containsKey(value.key)) {
+        if (value is SheetValue.Custom && !anchors.contains(value.anchor)) {
             return table.settleTarget(
                 offset.value,
                 0f,
