@@ -1,23 +1,36 @@
 package com.onexui.bottomsheet.state
 
+import com.onexui.bottomsheet.behavior.defaultXBottomSheetBehavior
 import com.onexui.bottomsheet.config.XBottomSheetDsl
+import com.onexui.bottomsheet.state.builder.BehaviorBuilder
+import com.onexui.bottomsheet.state.builder.StructureBuilder
+import com.onexui.bottomsheet.state.builder.StyleBuilder
+import com.onexui.bottomsheet.style.defaultXBottomSheetStyle
 
 @XBottomSheetDsl
 internal class XBottomSheetStateBuilder {
-    var isSkipCollapsed: Boolean = false
-    var isInitialLoading: Boolean = false
-    var peekFraction: Float = 2f / 3f
+    internal val structureBuilder = StructureBuilder()
+    internal val behaviorBuilder = BehaviorBuilder(defaultXBottomSheetBehavior())
+    internal val styleBuilder = StyleBuilder(defaultXBottomSheetStyle())
 
-    internal val anchorsBuilder = XSheetAnchorsBuilder()
+    inline fun structure(configure: StructureBuilder.() -> Unit) {
+        structureBuilder.configure()
+    }
 
-    inline fun anchors(configure: XSheetAnchorsBuilder.() -> Unit) {
-        anchorsBuilder.configure()
+    inline fun behavior(configure: BehaviorBuilder.() -> Unit) {
+        behaviorBuilder.configure()
+    }
+
+    inline fun style(configure: StyleBuilder.() -> Unit) {
+        styleBuilder.configure()
     }
 
     internal fun buildState(): XBottomSheetState = XBottomSheetState(
-        isSkipCollapsed = isSkipCollapsed,
-        isInitialLoading = isInitialLoading,
-        peekFraction = peekFraction,
-        anchors = anchorsBuilder.build(),
+        isSkipCollapsed = structureBuilder.isSkipCollapsed,
+        isInitialLoading = structureBuilder.isInitialLoading,
+        peekFraction = structureBuilder.peekFraction,
+        anchors = structureBuilder.buildAnchors(),
+        behavior = behaviorBuilder.build(),
+        style = styleBuilder.build(),
     )
 }

@@ -9,16 +9,7 @@ import com.onexui.bottomsheet.theme.XTheme
 internal fun XBottomSheetColors.resolveScrim(): Color = scrim.takeOrElse { specScrim }
 
 @Composable
-internal fun XBottomSheetColors.resolveHandleStatic(): Color = handleStatic.takeOrElse { specHandleStatic }
-
-@Composable
 internal fun XBottomSheetColors.resolveSheetBackground(): Color {
     val default = XTheme.colors.backgroundContent
     return sheetBackground.takeOrElse { default }
-}
-
-@Composable
-internal fun XBottomSheetColors.resolveHandleTheme(): Color {
-    val default = XTheme.colors.separator
-    return handleTheme.takeOrElse { default }
 }

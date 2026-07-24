@@ -2,6 +2,7 @@ package com.onexui.bottomsheet
 
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,16 +24,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalWindowInfo
 import com.onexui.bottomsheet.additionaltop.AdditionalTopState
 import com.onexui.bottomsheet.config.BottomKeyboardBehavior
-import com.onexui.bottomsheet.config.XBottomSheetConfig
-import com.onexui.bottomsheet.config.XBottomSheetConfigDefault
-import com.onexui.bottomsheet.config.resolveHandleStatic
-import com.onexui.bottomsheet.config.resolveHandleTheme
 import com.onexui.bottomsheet.config.resolveScrim
 import com.onexui.bottomsheet.config.resolveSheetBackground
 import com.onexui.bottomsheet.gesture.SheetNestedScrollConnection
@@ -51,7 +49,6 @@ internal fun XBottomSheet(
     state: XBottomSheetState,
     onDismissRequest: suspend () -> Unit,
     modifier: Modifier = Modifier,
-    config: XBottomSheetConfig = XBottomSheetConfigDefault,
     additionalTop: (@Composable XBottomSheetScope.() -> Unit)? = null,
     top: (@Composable XBottomSheetScope.() -> Unit)? = null,
     bottom: (@Composable XBottomSheetScope.() -> Unit)? = null,
@@ -66,19 +63,21 @@ internal fun XBottomSheet(
     val statusBarPx = WindowInsets.statusBars.getTop(density)
     val onDismiss = rememberUpdatedState(onDismissRequest)
     val keyboardState = rememberKeyboardLiftState()
-    val sheetScope = remember(state) { XBottomSheetScopeImpl(state, config.loadingSheetHeight) }
-    val dimensions = rememberSheetDimensions(
+    val sheetScope = remember(state) { XBottomSheetScopeImpl(state, state.style.loadingSheetHeight) }
+    val sheetDimensions = rememberSheetDimensions(
         density = density,
         containerSize = containerSize,
         statusBarPx = statusBarPx,
         navBarPx = navBarPx,
-        loadingSheetHeight = config.loadingSheetHeight,
-        scrimFadeDistance = config.scrimFadeDistance,
-        predictiveBackMaxShift = config.predictiveBackMaxShift,
-        wideScreenThreshold = config.wideScreenThreshold,
+        loadingSheetHeight = state.style.loadingSheetHeight,
+        scrimFadeDistance = state.style.scrimFadeDistance,
+        predictiveBackMaxShift = state.behavior.predictiveBackMaxShift,
+        wideScreenThreshold = state.style.wideScreenThreshold,
     )
-    val isInteractionsEnable = remember(config.dragHandle) {
-        derivedStateOf { config.dragHandle != null && !state.isLoading && !keyboardState.value.isKeyboardVisible }
+    val isInteractionsEnable = remember(state) {
+        derivedStateOf {
+            state.style.dragHandleStyle != null && !state.isLoading && !keyboardState.value.isKeyboardVisible
+        }
     }
     val additionalTopFraction = remember(state) {
         Animatable(if (state.additionalTopState == AdditionalTopState.Expanded) 1f else 0f)
@@ -99,10 +98,10 @@ internal fun XBottomSheet(
         onSheetHidden = { sheetScope.hideKeyboard() },
     )
     val backShift = remember { Animatable(0f) }
-    PredictiveBackHandler(enabled = state.isVisible && config.dismiss.isBackPressEnabled) { progress ->
+    PredictiveBackHandler(enabled = state.isVisible && state.behavior.dismiss.isBackPressEnabled) { progress ->
         try {
             progress.collect { backEvent ->
-                backShift.snapTo(backEvent.progress * dimensions.predictiveBackMaxShiftPx)
+                backShift.snapTo(backEvent.progress * sheetDimensions.predictiveBackMaxShiftPx)
             }
             state.requestDismiss()
             backShift.snapTo(0f)
@@ -111,17 +110,14 @@ internal fun XBottomSheet(
             throw exception
         }
     }
-    LaunchedEffect(state,  containerSize.height, statusBarPx) { state.snapToCurrentAnchor() }
+    LaunchedEffect(state, containerSize.height, statusBarPx) { state.snapToCurrentAnchor() }
 
     SideEffect {
-        state.updateDismissOnSwipeDown(config.dismiss.isSwipeDownEnabled)
-        state.updateFlingVelocityThreshold(config.flingVelocityThresholdPxPerSec)
-        state.updateResistanceMax(config.resistanceMaxPx)
         state.updateDismissScope(dismissScope)
         state.updateDismissRequest(onDismiss)
         state.updateKeyboardState(keyboardState)
         state.updateAlwaysFullScreenOnIme(
-            config.keyboard.bottomBehavior == BottomKeyboardBehavior.StayUnderKeyboard && bottom != null,
+            state.behavior.bottomBehaviorWithKeyboard == BottomKeyboardBehavior.StayUnderKeyboard && bottom != null,
         )
         sheetScope.updateKeyboardController(keyboardController)
         sheetScope.updateFocusManager(focusManager)
@@ -133,16 +129,14 @@ internal fun XBottomSheet(
     }
     val sheetBody: @Composable (Boolean) -> Unit = { isFillHeight ->
         SheetBody(
-            dragHandle = config.dragHandle,
-            shape = config.shape,
-            sheetBackgroundColor = config.colors.resolveSheetBackground(),
-            handleThemeColor = config.colors.resolveHandleTheme(),
-            handleStaticColor = config.colors.resolveHandleStatic(),
-            dragHandleTopPadding = config.dragHandleTopPadding,
-            dragHandleSize = config.dragHandleSize,
+            dragHandle = state.style.dragHandleStyle,
+            shape = state.style.shape,
+            sheetBackgroundColor = state.style.colors.resolveSheetBackground(),
+            dragHandleTopPadding = state.style.dragHandleTopPadding,
+            dragHandleSize = state.style.dragHandleSize,
             keyboardState = keyboardState,
             isFullScreen = state.isFullScreen,
-            bottomKeyboardBehavior = config.keyboard.bottomBehavior,
+            bottomKeyboardBehavior = state.behavior.bottomBehaviorWithKeyboard,
             navBarPx = navBarPx,
             isFillHeight = isFillHeight,
             top = top?.let { slot -> { sheetScope.slot() } },
@@ -150,20 +144,29 @@ internal fun XBottomSheet(
             middle = { if (state.isLoading) sheetScope.PresetLoader() else sheetScope.middle() },
         )
     }
-    val widthModifier = remember(dimensions.isWideScreen, config.maxWidth) {
-        if (dimensions.isWideScreen) Modifier.width(config.maxWidth) else Modifier.fillMaxWidth()
+    val widthModifier = remember(sheetDimensions.isWideScreen, state.style.maxWidth) {
+        if (sheetDimensions.isWideScreen) Modifier.width(state.style.maxWidth) else Modifier.fillMaxWidth()
     }
     val detectBody: @Composable () -> Unit = { sheetBody(false) }
     val placeBody: @Composable () -> Unit = { sheetBody(true) }
+    val additionalTopStyle = state.style.additionalTop
     val additionalTopBody: (@Composable () -> Unit)? = additionalTop?.let { card ->
         {
             Box(
-                modifier = Modifier.clip(
-                    RoundedCornerShape(
-                        topStart = config.additionalTop.cornerRadius,
-                        topEnd = config.additionalTop.cornerRadius,
+                modifier = Modifier
+                    .clip(
+                        RoundedCornerShape(
+                            topStart = additionalTopStyle.cornerRadius,
+                            topEnd = additionalTopStyle.cornerRadius,
+                        ),
+                    )
+                    .then(
+                        if (additionalTopStyle.backgroundColor.isSpecified) {
+                            Modifier.background(additionalTopStyle.backgroundColor)
+                        } else {
+                            Modifier
+                        },
                     ),
-                ),
             ) {
                 Box(modifier = Modifier.wrapContentHeight(align = Alignment.Top, unbounded = true)) {
                     sheetScope.card()
@@ -178,24 +181,24 @@ internal fun XBottomSheet(
     ) {
         SheetScrim(
             state = state,
-            isOverlayBackground = config.isOverlayBackground,
-            scrimColor = config.colors.resolveScrim(),
-            isDismissOnOutsideTap = config.dismiss.isOutsideTapEnabled,
-            scrimFadeDistancePx = dimensions.scrimFadeDistancePx,
+            isOverlayBackground = state.style.isOverlayBackground,
+            scrimColor = state.style.colors.resolveScrim(),
+            isDismissOnOutsideTap = state.behavior.dismiss.isOutsideTapEnabled,
+            scrimFadeDistancePx = sheetDimensions.scrimFadeDistancePx,
             onDismissRequest = { state.requestDismiss() },
         )
 
         SheetContainer(
             state = state,
-            insets = dimensions.insets,
-            isOverlayBackground = config.isOverlayBackground,
-            shape = config.shape,
+            insets = sheetDimensions.insets,
+            isOverlayBackground = state.style.isOverlayBackground,
+            shape = state.style.shape,
             keyboardState = keyboardState,
             isFullScreen = state.isFullScreen,
             isInteractionsEnabled = isInteractionsEnable.value,
             nestedScrollConnection = nestedScrollConnection,
             additionalTopFraction = additionalTopFraction,
-            additionalTopOverlap = config.additionalTopOverlap,
+            additionalTopOverlap = state.style.additionalTopOverlap,
             detectBody = detectBody,
             placeBody = placeBody,
             additionalTopBody = additionalTopBody,

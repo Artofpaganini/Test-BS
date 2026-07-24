@@ -24,8 +24,6 @@ internal fun SheetBody(
     dragHandle: DragHandleStyle?,
     shape: Shape,
     sheetBackgroundColor: Color,
-    handleThemeColor: Color,
-    handleStaticColor: Color,
     dragHandleTopPadding: Dp,
     dragHandleSize: DpSize,
     keyboardState: State<KeyboardLiftState>,
@@ -75,8 +73,6 @@ internal fun SheetBody(
         if (dragHandle != null) {
             DragHandle(
                 style = dragHandle,
-                themeColor = handleThemeColor,
-                staticColor = handleStaticColor,
                 topPadding = dragHandleTopPadding,
                 size = dragHandleSize,
                 modifier = Modifier.align(Alignment.TopCenter),

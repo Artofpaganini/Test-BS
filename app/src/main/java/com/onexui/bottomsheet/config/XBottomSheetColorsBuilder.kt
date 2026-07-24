@@ -3,11 +3,9 @@ package com.onexui.bottomsheet.config
 import androidx.compose.ui.graphics.Color
 
 @XBottomSheetDsl
-internal class XBottomSheetColorsBuilder {
-    var scrim: Color = Color.Unspecified
-    var sheetBackground: Color = Color.Unspecified
-    var handleTheme: Color = Color.Unspecified
-    var handleStatic: Color = Color.Unspecified
+internal class XBottomSheetColorsBuilder(current: XBottomSheetColors) {
+    var scrim: Color = current.scrim
+    var sheetBackground: Color = current.sheetBackground
 
-    internal fun build(): XBottomSheetColors = XBottomSheetColors(scrim, sheetBackground, handleTheme, handleStatic)
+    internal fun build(): XBottomSheetColors = XBottomSheetColors(scrim = scrim, sheetBackground = sheetBackground)
 }

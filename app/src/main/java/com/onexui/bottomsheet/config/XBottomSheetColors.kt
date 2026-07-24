@@ -7,9 +7,10 @@ import androidx.compose.ui.graphics.Color
 internal class XBottomSheetColors(
     val scrim: Color,
     val sheetBackground: Color,
-    val handleTheme: Color,
-    val handleStatic: Color,
 ) {
-    internal val specScrim: Color = Color.Black.copy(alpha = 0.40f)
-    internal val specHandleStatic: Color = Color.White.copy(alpha = 0.40f)
+    internal val specScrim: Color = Color.Black.copy(alpha = SCRIM_ALPHA)
+
+    private companion object {
+        const val SCRIM_ALPHA = 0.40f
+    }
 }

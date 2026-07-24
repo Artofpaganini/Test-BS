@@ -9,7 +9,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import com.onexui.bottomsheet.NativeSheetSpring
 import com.onexui.bottomsheet.additionaltop.AdditionalTopState
+import com.onexui.bottomsheet.behavior.XBottomSheetBehavior
+import com.onexui.bottomsheet.behavior.XBottomSheetBehaviorBuilder
 import com.onexui.bottomsheet.gesture.resistedOvershoot
+import com.onexui.bottomsheet.style.XBottomSheetStyle
+import com.onexui.bottomsheet.style.XBottomSheetStyleBuilder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
@@ -29,6 +33,8 @@ internal class XBottomSheetState internal constructor(
     val isInitialLoading: Boolean,
     peekFraction: Float,
     anchors: Map<String, Float>,
+    behavior: XBottomSheetBehavior,
+    style: XBottomSheetStyle,
 ) {
     private var accumulatedOvershootPx = 0f
 
@@ -56,18 +62,15 @@ internal class XBottomSheetState internal constructor(
     internal var isAlwaysFullScreenOnIme: Boolean = false
         private set
 
-    internal var isDismissOnSwipeDown: Boolean = true
-        private set
-
-    internal var flingVelocityThresholdPxPerSec: Float = 0f
-        private set
-
-    internal var resistanceMaxPx: Float = 0f
-        private set
-
     var isSkipCollapsed: Boolean by mutableStateOf(isSkipCollapsed)
     var peekFraction: Float by mutableStateOf(peekFraction)
     var anchors: Map<String, Float> by mutableStateOf(anchors)
+        private set
+
+    var behavior: XBottomSheetBehavior by mutableStateOf(behavior)
+        private set
+
+    var style: XBottomSheetStyle by mutableStateOf(style)
         private set
 
     var currentValue: SheetValue by mutableStateOf(SheetValue.Hidden)
@@ -84,9 +87,25 @@ internal class XBottomSheetState internal constructor(
 
     val isAnimating: Boolean get() = offset.isRunning
 
+    val progress: Float
+        get() {
+            val measured = metrics ?: return 0f
+            val maxHeightPx = measured.maxHeightPx
+            if (maxHeightPx <= 0) return 0f
+            return (offset.value / maxHeightPx).coerceIn(0f, 1f)
+        }
+
     /** Меняет набор кастомных rest-якорей той же DSL-грамматикой, что и билдер (`"half" at 0.5f`). */
     fun anchors(configure: XSheetAnchorsBuilder.() -> Unit) {
         anchors = XSheetAnchorsBuilder().apply(configure).build()
+    }
+
+    fun behavior(configure: XBottomSheetBehaviorBuilder.() -> Unit) {
+        behavior = XBottomSheetBehaviorBuilder(behavior).apply(configure).build()
+    }
+
+    fun style(configure: XBottomSheetStyleBuilder.() -> Unit) {
+        style = XBottomSheetStyleBuilder(style).apply(configure).build()
     }
 
     /** Открывает лист: в Loading — к Loader-якорю, иначе к openTarget по замеру. Уже открытый не переоткрывает. */
@@ -134,21 +153,6 @@ internal class XBottomSheetState internal constructor(
         currentValue = value
         isLoading = isLoadingSaved
         additionalTopState = additionalTop
-    }
-
-    internal fun updateDismissOnSwipeDown(isDismissOnSwipeDown: Boolean) {
-        if (this.isDismissOnSwipeDown == isDismissOnSwipeDown) return
-        this.isDismissOnSwipeDown = isDismissOnSwipeDown
-    }
-
-    internal fun updateFlingVelocityThreshold(flingVelocityThresholdPxPerSec: Float) {
-        if (this.flingVelocityThresholdPxPerSec == flingVelocityThresholdPxPerSec) return
-        this.flingVelocityThresholdPxPerSec = flingVelocityThresholdPxPerSec
-    }
-
-    internal fun updateResistanceMax(resistanceMaxPx: Float) {
-        if (this.resistanceMaxPx == resistanceMaxPx) return
-        this.resistanceMaxPx = resistanceMaxPx
     }
 
     internal fun updateAlwaysFullScreenOnIme(isAlwaysFullScreenOnIme: Boolean) {
@@ -289,8 +293,12 @@ internal class XBottomSheetState internal constructor(
     private fun resolveRestTargetAfterConfigChange(table: SheetAnchorTable): SheetValue {
         val value = currentValue
         if (value is SheetValue.Custom && !anchors.containsKey(value.key)) {
-            return table.settleTarget(offset.value, 0f, isDismissAllowed = false, flingVelocityThresholdPxPerSec)
-                ?: value
+            return table.settleTarget(
+                offset.value,
+                0f,
+                isDismissAllowed = false,
+                behavior.flingVelocityThresholdPxPerSec,
+            ) ?: value
         }
         return value
     }
@@ -309,7 +317,8 @@ internal class XBottomSheetState internal constructor(
     private suspend fun dragBy(deltaHeightPx: Float) {
         val measured = metrics ?: return
         val table = anchorTable ?: return
-        val floorPx = if (isDismissOnSwipeDown) 0f else table.lowestRestAnchorPx.toFloat()
+        val resistanceMaxPx = behavior.resistanceMaxPx
+        val floorPx = if (behavior.dismiss.isSwipeDownEnabled) 0f else table.lowestRestAnchorPx.toFloat()
         val isAtTop = currentValue == SheetValue.ExpandedFullScreen
         val overshootBase = if (isAtTop) measured.maxHeightPx.toFloat() else table.highestRestAnchorPx.toFloat()
         val overshootCeiling =
@@ -331,7 +340,12 @@ internal class XBottomSheetState internal constructor(
         accumulatedOvershootPx = 0f
         imePromotedFrom = null
         val table = anchorTable ?: return
-        val target = table.settleTarget(offset.value, velocity, isDismissOnSwipeDown, flingVelocityThresholdPxPerSec)
+        val target = table.settleTarget(
+            offset.value,
+            velocity,
+            behavior.dismiss.isSwipeDownEnabled,
+            behavior.flingVelocityThresholdPxPerSec,
+        )
         when {
             target == null -> animateTo(currentValue)
             target == SheetValue.Hidden -> requestDismiss()
